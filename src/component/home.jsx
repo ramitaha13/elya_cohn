@@ -810,7 +810,7 @@ export default function WriterLandingPage() {
               </p>
               <p className="text-xs tracking-widest text-gold mb-4">עקבו</p>
               <div className="flex gap-4">
-                {["דמה חדשה"].map((s) => (
+                {["פמה חדשה"].map((s) => (
                   <a
                     key={s}
                     href="http://stage.co.il/Authors/IliaCohen"
