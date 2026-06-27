@@ -140,7 +140,14 @@ function OverviewTab({ works, messages, loading, onGoTo }) {
   );
 }
 
-function WorksTab({ works, loading, onAdd, onRemove, onToggleFeatured }) {
+function WorksTab({
+  works,
+  loading,
+  onAdd,
+  onRemove,
+  onUpdate,
+  onToggleFeatured,
+}) {
   const [adding, setAdding] = useState(false);
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState({
@@ -148,12 +155,23 @@ function WorksTab({ works, loading, onAdd, onRemove, onToggleFeatured }) {
     category: "שיר",
     year: "",
     excerpt: "",
+    content: "",
     featured: false,
   });
 
-  const handleRemove = async (id) => {
+  const [editingId, setEditingId] = useState(null);
+  const [editDraft, setEditDraft] = useState(null);
+  const [updating, setUpdating] = useState(false);
+
+  const [viewingId, setViewingId] = useState(null);
+
+  const handleRemove = async (work) => {
+    const confirmed = window.confirm(
+      `למחוק את היצירה "${work.title}"?\nלא ניתן לשחזר את היצירה לאחר המחיקה.`,
+    );
+    if (!confirmed) return;
     try {
-      await onRemove(id);
+      await onRemove(work.id);
     } catch (err) {
       console.error("שגיאה במחיקת יצירה:", err);
       alert("מחיקת היצירה נכשלה, נסו שוב.");
@@ -179,6 +197,7 @@ function WorksTab({ works, loading, onAdd, onRemove, onToggleFeatured }) {
         category: draft.category,
         year: draft.year || "—",
         excerpt: draft.excerpt,
+        content: draft.content,
         featured: draft.featured,
       });
       setDraft({
@@ -186,6 +205,7 @@ function WorksTab({ works, loading, onAdd, onRemove, onToggleFeatured }) {
         category: "שיר",
         year: "",
         excerpt: "",
+        content: "",
         featured: false,
       });
       setAdding(false);
@@ -194,6 +214,40 @@ function WorksTab({ works, loading, onAdd, onRemove, onToggleFeatured }) {
       alert("הוספת היצירה נכשלה, נסו שוב.");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const startEdit = (w) => {
+    setViewingId(null);
+    setEditingId(w.id);
+    setEditDraft({
+      title: w.title || "",
+      category: w.category || "שיר",
+      year: w.year || "",
+      excerpt: w.excerpt || "",
+      content: w.content || "",
+      featured: !!w.featured,
+    });
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditDraft(null);
+  };
+
+  const saveEdit = async (e) => {
+    e.preventDefault();
+    if (!editDraft.title.trim()) return;
+    setUpdating(true);
+    try {
+      await onUpdate(editingId, editDraft);
+      setEditingId(null);
+      setEditDraft(null);
+    } catch (err) {
+      console.error("שגיאה בעדכון יצירה:", err);
+      alert("עדכון היצירה נכשל, נסו שוב.");
+    } finally {
+      setUpdating(false);
     }
   };
 
@@ -247,6 +301,15 @@ function WorksTab({ works, loading, onAdd, onRemove, onToggleFeatured }) {
               setDraft((d) => ({ ...d, excerpt: e.target.value }))
             }
           />
+          <textarea
+            className="form-input form-textarea work-content-input"
+            placeholder="תוכן היצירה המלא (השיר/הסיפור עצמו)"
+            rows={6}
+            value={draft.content}
+            onChange={(e) =>
+              setDraft((d) => ({ ...d, content: e.target.value }))
+            }
+          />
           <label className="featured-check">
             <input
               type="checkbox"
@@ -271,30 +334,137 @@ function WorksTab({ works, loading, onAdd, onRemove, onToggleFeatured }) {
         <p className="text-muted text-sm py-6 text-center">טוען יצירות...</p>
       ) : (
         <div className="work-table">
-          {works.map((w) => (
-            <div key={w.id} className="work-row">
-              <span className="work-title font-display">{w.title}</span>
-              <span className="work-meta">
-                {w.category} · {w.year}
-              </span>
-              {w.featured && <span className="featured-pill">נבחרת</span>}
-              <div className="work-actions">
-                <button
-                  className="link-btn"
-                  onClick={() => handleToggleFeatured(w)}
-                >
-                  {w.featured ? "הסר מהנבחרות" : "הצג כנבחרת"}
-                </button>
-                <button className="link-btn">עריכה</button>
-                <button
-                  className="link-btn link-btn-danger"
-                  onClick={() => handleRemove(w.id)}
-                >
-                  מחיקה
-                </button>
+          {works.map((w) => {
+            const isEditing = editingId === w.id;
+            const isViewing = viewingId === w.id;
+
+            if (isEditing) {
+              return (
+                <form key={w.id} onSubmit={saveEdit} className="edit-work-form">
+                  <input
+                    className="form-input"
+                    placeholder="כותרת"
+                    value={editDraft.title}
+                    onChange={(e) =>
+                      setEditDraft((d) => ({ ...d, title: e.target.value }))
+                    }
+                  />
+                  <select
+                    className="form-input"
+                    value={editDraft.category}
+                    onChange={(e) =>
+                      setEditDraft((d) => ({ ...d, category: e.target.value }))
+                    }
+                  >
+                    <option>שיר</option>
+                    <option>סיפור</option>
+                    <option>מילים לשיר</option>
+                    <option>מחזה</option>
+                  </select>
+                  <input
+                    className="form-input"
+                    placeholder="שנה"
+                    value={editDraft.year}
+                    onChange={(e) =>
+                      setEditDraft((d) => ({ ...d, year: e.target.value }))
+                    }
+                  />
+                  <input
+                    className="form-input"
+                    placeholder="תקציר (אופציונלי, יוצג בדף הנחיתה)"
+                    value={editDraft.excerpt}
+                    onChange={(e) =>
+                      setEditDraft((d) => ({ ...d, excerpt: e.target.value }))
+                    }
+                  />
+                  <textarea
+                    className="form-input form-textarea work-content-input"
+                    placeholder="תוכן היצירה המלא (השיר/הסיפור עצמו)"
+                    rows={6}
+                    value={editDraft.content}
+                    onChange={(e) =>
+                      setEditDraft((d) => ({ ...d, content: e.target.value }))
+                    }
+                  />
+                  <label className="featured-check">
+                    <input
+                      type="checkbox"
+                      checked={editDraft.featured}
+                      onChange={(e) =>
+                        setEditDraft((d) => ({
+                          ...d,
+                          featured: e.target.checked,
+                        }))
+                      }
+                    />
+                    יצירה נבחרת (תוצג בדף הנחיתה)
+                  </label>
+                  <div className="edit-actions">
+                    <button
+                      type="submit"
+                      className="btn-fill px-5 py-2 text-xs"
+                      disabled={updating}
+                    >
+                      {updating ? "מעדכן..." : "שמירת שינויים"}
+                    </button>
+                    <button
+                      type="button"
+                      className="link-btn"
+                      onClick={cancelEdit}
+                    >
+                      ביטול
+                    </button>
+                  </div>
+                </form>
+              );
+            }
+
+            return (
+              <div key={w.id} className="work-row-block">
+                <div className="work-row">
+                  <button
+                    className="work-title font-display work-title-btn"
+                    onClick={() => setViewingId(isViewing ? null : w.id)}
+                    title="הצג/הסתר את תוכן היצירה"
+                  >
+                    {w.title}
+                  </button>
+                  <span className="work-meta">
+                    {w.category} · {w.year}
+                  </span>
+                  {w.featured && <span className="featured-pill">נבחרת</span>}
+                  <div className="work-actions">
+                    <button
+                      className="link-btn"
+                      onClick={() => handleToggleFeatured(w)}
+                    >
+                      {w.featured ? "הסר מהנבחרות" : "הצג כנבחרת"}
+                    </button>
+                    <button className="link-btn" onClick={() => startEdit(w)}>
+                      עריכה
+                    </button>
+                    <button
+                      className="link-btn link-btn-danger"
+                      onClick={() => handleRemove(w)}
+                    >
+                      מחיקה
+                    </button>
+                  </div>
+                </div>
+                {isViewing && (
+                  <div className="work-content-view">
+                    {w.content ? (
+                      <p>{w.content}</p>
+                    ) : (
+                      <p className="text-muted">
+                        עדיין לא נכתב תוכן ליצירה זו. לחצו "עריכה" כדי להוסיף.
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
           {works.length === 0 && (
             <p className="text-muted text-sm py-6 text-center">
               אין עדיין יצירות. הוסיפו את הראשונה.
@@ -479,6 +649,7 @@ export default function DashboardPage() {
             category: v.category || "שיר",
             year: v.year || "—",
             excerpt: v.excerpt || "",
+            content: v.content || "",
             featured: !!v.featured,
           };
         });
@@ -550,6 +721,12 @@ export default function DashboardPage() {
   };
   const handleRemoveWork = async (id) => {
     await deleteDoc(doc(db, "works", id));
+  };
+  const handleUpdateWork = async (id, data) => {
+    await updateDoc(doc(db, "works", id), {
+      ...data,
+      updatedAt: serverTimestamp(),
+    });
   };
   const handleToggleFeatured = async (id, featured) => {
     await updateDoc(doc(db, "works", id), { featured });
@@ -741,14 +918,33 @@ export default function DashboardPage() {
         .form-textarea{ resize:vertical; }
 
         .work-table{ border-top:1px solid rgba(0,0,0,0.08); }
+        .work-row-block{ border-bottom:1px solid rgba(0,0,0,0.08); }
         .work-row{
           display:flex;
           align-items:center;
           gap:16px;
           padding:14px 4px;
-          border-bottom:1px solid rgba(0,0,0,0.08);
         }
         .work-title{ font-size:16px; flex-shrink:0; }
+        .work-title-btn{
+          background:none;
+          border:none;
+          padding:0;
+          cursor:pointer;
+          text-align:right;
+          color:var(--ink);
+          transition:color .2s ease;
+        }
+        .work-title-btn:hover{ color:var(--wine); }
+        .work-content-view{
+          background:var(--parchment-2);
+          padding:14px 16px 18px;
+          margin:0 4px 14px;
+          font-size:14px;
+          line-height:1.8;
+          color:var(--muted-2);
+          white-space:pre-wrap;
+        }
         .work-meta{ color:var(--muted); font-size:12px; flex:1; }
         .work-actions{ display:flex; gap:14px; flex-shrink:0; }
         .featured-check{
@@ -766,6 +962,22 @@ export default function DashboardPage() {
           border:1px solid rgba(122,46,58,0.3);
           padding:2px 8px;
           flex-shrink:0;
+        }
+        .work-content-input{ flex-basis:100%; }
+        .edit-work-form{
+          display:flex;
+          flex-wrap:wrap;
+          gap:10px;
+          background:rgba(201,166,70,0.06);
+          padding:16px;
+          border-bottom:1px solid rgba(0,0,0,0.08);
+        }
+        .edit-work-form .form-input{ flex:1; min-width:140px; }
+        .edit-actions{
+          display:flex;
+          align-items:center;
+          gap:16px;
+          flex-basis:100%;
         }
 
         /* Messages tab */
@@ -844,6 +1056,7 @@ export default function DashboardPage() {
             loading={loading.works}
             onAdd={handleAddWork}
             onRemove={handleRemoveWork}
+            onUpdate={handleUpdateWork}
             onToggleFeatured={handleToggleFeatured}
           />
         )}
