@@ -30,6 +30,8 @@ import {
  *  4. שליחת הטופס כבר מחוברת ל-Firestore (קולקשן "messages")
  *  5. כפתור "קריאת יצירות" בעמוד הראשי (Hero) מוביל לדף היצירות הנפרד
  *     בנתיב "/works" (ולא גולל לחלק היצירות באותו עמוד).
+ *  6. התאמת מובייל: תפריט המבורגר נפתח בלחיצה במסכים צרים, ושורות
+ *     היצירות עוברות לפריסה אנכית (כותרת מעל קטגוריה/שנה) במקום להיחתך.
  */
 
 const DEFAULT_WRITER = {
@@ -263,6 +265,7 @@ export default function WriterLandingPage() {
   const [works, setWorks] = useState([]);
   const [loadingWorks, setLoadingWorks] = useState(true);
   const [profile, setProfile] = useState(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // טוען את הפרופיל בזמן אמת מ-Firestore (דוקומנט profile/main, מנוהל מהדשבורד)
   useEffect(() => {
@@ -330,6 +333,7 @@ export default function WriterLandingPage() {
     loadingWorks || works.length === 0 ? FALLBACK_WORKS : works;
 
   const scrollTo = (id) => {
+    setMobileMenuOpen(false);
     const el = document.getElementById(id);
     if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
   };
@@ -399,6 +403,27 @@ export default function WriterLandingPage() {
         }
         .nav-link:hover{ opacity:1; }
         .nav-link:hover:after{ transform:scaleX(1); }
+
+        /* Hamburger (מובייל) */
+        .hamburger-line{
+          width:22px;
+          height:1.5px;
+          background:var(--gold-soft);
+          transition:transform .3s ease, opacity .3s ease;
+        }
+        .line-1-open{ transform:translateY(6.5px) rotate(45deg); }
+        .line-2-open{ opacity:0; }
+        .line-3-open{ transform:translateY(-6.5px) rotate(-45deg); }
+
+        /* תפריט נפתח - מובייל */
+        .mobile-menu{
+          max-height:0;
+          overflow:hidden;
+          background:rgba(22,35,31,0.97);
+          backdrop-filter: blur(8px);
+          transition:max-height .35s ease;
+        }
+        .mobile-menu.is-open{ max-height:340px; }
 
         /* Flourish divider */
         .flourish{ display:flex; align-items:center; justify-content:center; gap:10px; }
@@ -575,26 +600,34 @@ export default function WriterLandingPage() {
         }
 
         @media (prefers-reduced-motion: reduce){
-          .rise-in, .toc-row, .chip, .underline-grow:after, .chevron, .work-excerpt, .nav-shell, .btn-gold, .btn-fill{
+          .rise-in, .toc-row, .chip, .underline-grow:after, .chevron, .work-excerpt, .nav-shell, .btn-gold, .btn-fill, .mobile-menu{
             animation:none !important;
             transition:none !important;
           }
+        }
+
+        /* התאמות מובייל כלליות */
+        @media (max-width: 480px){
+          .portrait-frame{ width: 80%; }
+          .about-photo-frame{ max-width: 220px; }
         }
       `}</style>
 
       {/* NAV */}
       <nav
         className={`nav-shell fixed top-0 right-0 left-0 z-50 ${
-          scrolled ? "is-solid py-3" : "py-6"
+          scrolled || mobileMenuOpen ? "is-solid py-3" : "py-6"
         }`}
       >
-        <div className="max-w-6xl mx-auto px-6 flex items-center justify-between">
+        <div className="max-w-6xl mx-auto px-5 sm:px-6 flex items-center justify-between">
           <button
             onClick={() => scrollTo("hero")}
             className="font-display text-lg text-parchment"
           >
             {writer.name}
           </button>
+
+          {/* ניווט - דסקטופ */}
           <ul className="hidden md:flex items-center gap-8 text-sm">
             {NAV_LINKS.map((l) => (
               <li key={l.id}>
@@ -604,12 +637,57 @@ export default function WriterLandingPage() {
               </li>
             ))}
           </ul>
+
           <button
             onClick={() => navigate("/login")}
             className="btn-gold hidden md:inline-block px-4 py-2 text-xs"
           >
             כניסה
           </button>
+
+          {/* המבורגר - מובייל בלבד */}
+          <button
+            onClick={() => setMobileMenuOpen((v) => !v)}
+            className="md:hidden flex flex-col gap-[5px] p-2"
+            aria-label="פתיחת תפריט"
+            aria-expanded={mobileMenuOpen}
+          >
+            <span
+              className={`hamburger-line ${mobileMenuOpen ? "line-1-open" : ""}`}
+            />
+            <span
+              className={`hamburger-line ${mobileMenuOpen ? "line-2-open" : ""}`}
+            />
+            <span
+              className={`hamburger-line ${mobileMenuOpen ? "line-3-open" : ""}`}
+            />
+          </button>
+        </div>
+
+        {/* תפריט נפתח - מובייל */}
+        <div
+          className={`mobile-menu md:hidden ${mobileMenuOpen ? "is-open" : ""}`}
+        >
+          <ul className="flex flex-col items-center gap-6 py-8 text-base">
+            {NAV_LINKS.map((l) => (
+              <li key={l.id}>
+                <button onClick={() => scrollTo(l.id)} className="nav-link">
+                  {l.label}
+                </button>
+              </li>
+            ))}
+            <li>
+              <button
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  navigate("/login");
+                }}
+                className="btn-gold px-5 py-2 text-xs"
+              >
+                כניסה
+              </button>
+            </li>
+          </ul>
         </div>
       </nav>
 
@@ -618,22 +696,22 @@ export default function WriterLandingPage() {
         id="hero"
         className="bg-ink text-parchment min-h-screen flex items-center pt-28 pb-16"
       >
-        <div className="max-w-6xl mx-auto px-6 grid md:grid-cols-2 gap-14 items-center w-full">
+        <div className="max-w-6xl mx-auto px-5 sm:px-6 grid md:grid-cols-2 gap-10 md:gap-14 items-center w-full">
           {/* Text side */}
-          <div className="order-2 md:order-1">
+          <div className="order-2 md:order-1 text-center md:text-right">
             <p className="rise-in text-xs tracking-widest text-muted mb-5">
               {writer.role}
             </p>
-            <h1 className="rise-in delay-1 font-display text-5xl md:text-6xl leading-[1.15] mb-6">
+            <h1 className="rise-in delay-1 font-display text-4xl sm:text-5xl md:text-6xl leading-[1.15] mb-6">
               {writer.name}
             </h1>
-            <p className="rise-in delay-2 font-display text-xl text-gold-soft mb-8">
+            <p className="rise-in delay-2 font-display text-lg sm:text-xl text-gold-soft mb-8">
               {writer.tagline}
             </p>
-            <p className="rise-in delay-3 text-muted text-base leading-relaxed border-r-2 border-gold pr-4 mb-10 max-w-md">
+            <p className="rise-in delay-3 text-muted text-base leading-relaxed border-r-2 border-gold pr-4 mb-10 max-w-md mx-auto md:mx-0 text-right">
               {writer.excerpt}
             </p>
-            <div className="rise-in delay-4 flex flex-wrap gap-4">
+            <div className="rise-in delay-4 flex flex-wrap gap-4 justify-center md:justify-start">
               <button
                 onClick={() => navigate("/works")}
                 className="btn-fill px-6 py-3 text-sm font-medium"
@@ -645,7 +723,7 @@ export default function WriterLandingPage() {
 
           {/* Image side */}
           <div className="order-1 md:order-2 flex justify-center">
-            <div className="portrait-frame w-64 md:w-80">
+            <div className="portrait-frame w-56 sm:w-64 md:w-80">
               <div className="portrait-inner">
                 <img
                   src={writerPhoto}
@@ -659,13 +737,13 @@ export default function WriterLandingPage() {
       </header>
 
       {/* ABOUT */}
-      <section id="about" className="bg-parchment py-24 md:py-32">
-        <div className="max-w-6xl mx-auto px-6">
-          <Flourish className="mb-16" />
-          <div className="grid md:grid-cols-12 gap-12">
-            <div className="md:col-span-4">
+      <section id="about" className="bg-parchment py-20 md:py-32">
+        <div className="max-w-6xl mx-auto px-5 sm:px-6">
+          <Flourish className="mb-12 md:mb-16" />
+          <div className="grid md:grid-cols-12 gap-10 md:gap-12">
+            <div className="md:col-span-4 flex flex-col items-center md:items-start text-center md:text-right">
               <p className="text-xs tracking-widest text-wine mb-3">אודות</p>
-              <h2 className="font-display text-4xl leading-tight mb-8">
+              <h2 className="font-display text-3xl sm:text-4xl leading-tight mb-8">
                 כתיבה כמרחב בין שיר לסיפור
               </h2>
               <div className="about-photo-frame">
@@ -680,14 +758,16 @@ export default function WriterLandingPage() {
               {writer.bio.map((p, i) => (
                 <p
                   key={i}
-                  className="text-muted-2 leading-loose text-[17px] mb-5"
+                  className="text-muted-2 leading-loose text-[16px] sm:text-[17px] mb-5"
                 >
                   {p}
                 </p>
               ))}
-              <div className="flex items-start gap-4 mt-10 bg-parchment-2 p-6 border-r-2 border-wine">
-                <span className="quote-mark text-5xl text-wine">”</span>
-                <p className="font-display text-xl leading-relaxed pt-2">
+              <div className="flex items-start gap-4 mt-10 bg-parchment-2 p-5 sm:p-6 border-r-2 border-wine">
+                <span className="quote-mark text-4xl sm:text-5xl text-wine">
+                  ”
+                </span>
+                <p className="font-display text-lg sm:text-xl leading-relaxed pt-2">
                   {writer.excerpt}
                 </p>
               </div>
@@ -697,21 +777,21 @@ export default function WriterLandingPage() {
       </section>
 
       {/* DISCIPLINES */}
-      <section id="disciplines" className="bg-ink-2 py-24">
-        <div className="max-w-6xl mx-auto px-6">
-          <div className="text-center mb-14">
+      <section id="disciplines" className="bg-ink-2 py-20 md:py-24">
+        <div className="max-w-6xl mx-auto px-5 sm:px-6">
+          <div className="text-center mb-12 md:mb-14">
             <p className="text-xs tracking-widest text-gold mb-3">
               אמנות רב־תחומית
             </p>
-            <h2 className="font-display text-3xl md:text-4xl text-parchment">
+            <h2 className="font-display text-2xl sm:text-3xl md:text-4xl text-parchment">
               תחומי יצירה
             </h2>
           </div>
-          <div className="flex flex-wrap justify-center gap-4">
+          <div className="flex flex-wrap justify-center gap-3 sm:gap-4">
             {DISCIPLINES.map((d) => (
               <div
                 key={d.he}
-                className="chip px-6 py-4 text-center min-w-[150px]"
+                className="chip px-5 sm:px-6 py-4 text-center min-w-[140px] sm:min-w-[150px]"
               >
                 <p className="font-display text-lg text-parchment">{d.he}</p>
                 <p className="text-[11px] tracking-wider text-muted mt-1">
@@ -724,13 +804,13 @@ export default function WriterLandingPage() {
       </section>
 
       {/* WORKS — table of contents */}
-      <section id="works" className="bg-parchment py-24 md:py-32">
-        <div className="max-w-3xl mx-auto px-6">
-          <div className="text-center mb-16">
+      <section id="works" className="bg-parchment py-20 md:py-32">
+        <div className="max-w-3xl mx-auto px-5 sm:px-6">
+          <div className="text-center mb-12 md:mb-16">
             <p className="text-xs tracking-widest text-wine mb-3">
               ביבליוגרפיה
             </p>
-            <h2 className="font-display text-4xl">יצירות נבחרות</h2>
+            <h2 className="font-display text-3xl sm:text-4xl">יצירות נבחרות</h2>
           </div>
 
           <div className="border-t border-muted">
@@ -741,30 +821,36 @@ export default function WriterLandingPage() {
                 <div key={key} className="border-b border-muted">
                   <button
                     onClick={() => setOpenWork(isOpen ? null : i)}
-                    className="toc-row w-full flex items-center py-5 text-right"
+                    className="toc-row w-full flex flex-col sm:flex-row sm:items-center py-5 text-right gap-1.5 sm:gap-0"
                     aria-expanded={isOpen}
                   >
-                    <span className="toc-title text-lg md:text-xl whitespace-nowrap">
-                      {w.title}
-                    </span>
-                    <span className="toc-leader" />
-                    <span className="text-sm text-muted whitespace-nowrap">
+                    <div className="flex items-center w-full">
+                      <span className="toc-title text-base sm:text-lg md:text-xl truncate">
+                        {w.title}
+                      </span>
+                      <span className="toc-leader hidden sm:block" />
+                      <span className="text-sm text-muted whitespace-nowrap hidden sm:inline">
+                        {w.category} · {w.year}
+                      </span>
+                      <svg
+                        className={`chevron ${isOpen ? "is-open" : ""} mr-3 flex-shrink-0`}
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                      >
+                        <path
+                          d="M9 18l6-6-6-6"
+                          stroke="currentColor"
+                          strokeWidth="1.6"
+                          className="text-wine"
+                        />
+                      </svg>
+                    </div>
+                    {/* קטגוריה/שנה - שורה נפרדת במובייל בלבד */}
+                    <span className="text-sm text-muted whitespace-nowrap pr-1 sm:hidden">
                       {w.category} · {w.year}
                     </span>
-                    <svg
-                      className={`chevron ${isOpen ? "is-open" : ""} mr-3 flex-shrink-0`}
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                    >
-                      <path
-                        d="M9 18l6-6-6-6"
-                        stroke="currentColor"
-                        strokeWidth="1.6"
-                        className="text-wine"
-                      />
-                    </svg>
                   </button>
                   <div className={`work-excerpt ${isOpen ? "is-open" : ""}`}>
                     <p className="text-muted-2 leading-relaxed text-[15px] pb-6 pr-1 max-w-xl">
@@ -785,24 +871,24 @@ export default function WriterLandingPage() {
       </section>
 
       {/* CLOSING CTA */}
-      <section className="bg-ink py-28 text-center">
-        <div className="max-w-2xl mx-auto px-6">
+      <section className="bg-ink py-20 md:py-28 text-center">
+        <div className="max-w-2xl mx-auto px-5 sm:px-6">
           <Seal size={64} />
-          <p className="font-display text-2xl md:text-3xl text-parchment leading-relaxed mt-8">
+          <p className="font-display text-xl sm:text-2xl md:text-3xl text-parchment leading-relaxed mt-8">
             {writer.excerpt}
           </p>
-          <Flourish className="my-10" />
+          <Flourish className="my-8 md:my-10" />
         </div>
       </section>
 
       {/* CONTACT / FOOTER */}
-      <footer id="contact" className="bg-ink-2 pt-20 pb-10">
-        <div className="max-w-6xl mx-auto px-6">
-          <div className="grid md:grid-cols-2 gap-14 mb-14">
+      <footer id="contact" className="bg-ink-2 pt-16 md:pt-20 pb-10">
+        <div className="max-w-6xl mx-auto px-5 sm:px-6">
+          <div className="grid md:grid-cols-2 gap-12 md:gap-14 mb-14 text-center md:text-right">
             {/* Left: intro + socials */}
-            <div>
+            <div className="flex flex-col items-center md:items-start">
               <p className="text-xs tracking-widest text-wine mb-3">צור קשר</p>
-              <h3 className="font-display text-3xl text-parchment mb-4">
+              <h3 className="font-display text-2xl sm:text-3xl text-parchment mb-4">
                 {writer.name}
               </h3>
               <p className="text-muted text-sm leading-relaxed mb-10 max-w-sm">
@@ -825,11 +911,11 @@ export default function WriterLandingPage() {
             </div>
 
             {/* Right: contact form */}
-            <div>
+            <div className="flex justify-center md:justify-start">
               <ContactForm />
             </div>
           </div>
-          <div className="border-t border-[rgba(201,166,70,0.2)] pt-6 flex flex-col md:flex-row justify-between gap-3">
+          <div className="border-t border-[rgba(201,166,70,0.2)] pt-6 flex flex-col md:flex-row justify-between gap-3 text-center md:text-right">
             <p className="text-xs text-muted">
               © {new Date().getFullYear()} {writer.name}. כל הזכויות שמורות.
             </p>
