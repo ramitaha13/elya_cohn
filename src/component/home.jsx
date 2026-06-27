@@ -26,6 +26,8 @@ import {
  *     יצירות שסומנו "נבחרת" (featured: true) בדשבורד. FALLBACK_WORKS מוצג
  *     רק כל עוד אין עדיין יצירות נבחרות שמורות.
  *  4. שליחת הטופס כבר מחוברת ל-Firestore (קולקשן "messages")
+ *  5. כפתור "קריאת יצירות" בעמוד הראשי (Hero) מוביל לדף היצירות הנפרד
+ *     בנתיב "/works" (ולא גולל לחלק היצירות באותו עמוד).
  */
 
 const DEFAULT_WRITER = {
@@ -618,7 +620,7 @@ export default function WriterLandingPage() {
             </p>
             <div className="rise-in delay-4 flex flex-wrap gap-4">
               <button
-                onClick={() => scrollTo("works")}
+                onClick={() => navigate("/works")}
                 className="btn-fill px-6 py-3 text-sm font-medium"
               >
                 קריאת יצירות

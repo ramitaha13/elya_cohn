@@ -7,6 +7,7 @@ import "./index.css";
 import Home from "./component/home.jsx";
 import LoginPage from "./component/loginpage.jsx";
 import Dashboardpage from "./component/dashboardpage.jsx";
+import WorksPage from "./component/workspage.jsx";
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
@@ -15,6 +16,7 @@ createRoot(document.getElementById("root")).render(
         <Route path="/" element={<Home />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/dashboard" element={<Dashboardpage />} />
+        <Route path="/works" element={<WorksPage />} />
       </Routes>
     </BrowserRouter>
   </StrictMode>,

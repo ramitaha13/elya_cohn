@@ -104,7 +104,6 @@ function OverviewTab({ works, messages, loading, onGoTo }) {
                 : null
           }
         />
-        <StatCard label="צפיות בדף (30 יום)" value="1,284" hint="דמו" />
       </div>
 
       <div className="panel mt-8">
@@ -218,6 +217,12 @@ function WorksTab({
   };
 
   const startEdit = (w) => {
+    // === DEBUG: בדיקה זמנית — פותחים את ה-Console (F12) ולוחצים "עריכה" ===
+    // אם content מופיע כ-undefined / "" כאן — הבעיה היא בדאטה ב-Firestore,
+    // לא בקוד. אם הוא מכיל טקסט אבל לא מוצג בטופס — שלחו לי מה רואים כאן.
+    console.log("startEdit -> work object:", w);
+    console.log("startEdit -> content value:", w.content);
+
     setViewingId(null);
     setEditingId(w.id);
     setEditDraft({
