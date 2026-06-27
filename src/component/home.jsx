@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 // ייבוא התמונה כמודול - כך זה עובד נכון ב-Vite/CRA בלי קשר למיקום התיקייה
 import writerPhoto from "../assets/IMG_8080.jpg";
 
@@ -18,7 +19,7 @@ const WRITER = {
   tagline: " מילים שנעות בין שיר לסיפור לציור",
   role: "יוצר רב־תחומי · שירה · סיפורת · כתיבה למוזיקה",
   excerpt:
-    "״כל שיר הוא דלת, וכל סיפור הוא חדר שמעבר לה. אני רק מחזיקה את המפתח.״",
+    "״כל שיר הוא דלת, וכל סיפור הוא חדר שמעבר לה. אני רק מחזיק את המפתח.״",
   bio: [
     "אילייה כהן הוא יוצר רב־תחומי המתמחה ביצירה מקורית המשלבת בין רעיונות חדשניים, חשיבה יצירתית ודיוק מקצועי. עבודותיו מתאפיינות בסגנון ייחודי, תשומת לב לפרטים ויכולת להפוך רעיונות לחוויות בעלות משמעות ואסתטיקה.",
     "בכל פרויקט אילייה שם דגש על איכות, אמינות ומקצועיות, תוך הקפדה על תהליך עבודה מסודר ושיתוף פעולה מלא עם לקוחותיו. היצירתיות, האחריות והמחויבות שלו למצוינות מאפשרות לו ליצור עבודות מקוריות ומרשימות, המשקפות את החזון של כל פרויקט בצורה המדויקת והטובה ביותר.",
@@ -234,6 +235,7 @@ function ContactForm() {
 
 export default function WriterLandingPage() {
   const scrolled = useScrolled();
+  const navigate = useNavigate();
   const [openWork, setOpenWork] = useState(null);
 
   const scrollTo = (id) => {
@@ -499,7 +501,7 @@ export default function WriterLandingPage() {
             ))}
           </ul>
           <button
-            onClick={() => scrollTo("login")}
+            onClick={() => navigate("/login")}
             className="btn-gold hidden md:inline-block px-4 py-2 text-xs"
           >
             כניסה
