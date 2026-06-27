@@ -2,6 +2,8 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 // ייבוא התמונה כמודול - כך זה עובד נכון ב-Vite/CRA בלי קשר למיקום התיקייה
 import writerPhoto from "../assets/IMG_8080.jpg";
+// תמונה שנייה — מוצגת בסקשן "אודות"
+import authorPhoto from "../assets/iliacohen.jpg";
 // חיבור ל-Firestore
 import { db } from "../firebase"; // התאם את הנתיב למיקום firebase.js שלך
 import {
@@ -437,6 +439,19 @@ export default function WriterLandingPage() {
           color:var(--muted);
         }
 
+        /* About section photo */
+        .about-photo-frame{
+          position:relative;
+          border:1px solid var(--gold);
+          padding:8px;
+          aspect-ratio: 4/5;
+          max-width:260px;
+          overflow:hidden;
+        }
+        .about-photo-frame img{
+          display:block;
+        }
+
         /* Hero entrance animation */
         @keyframes riseIn{
           from{ opacity:0; transform:translateY(18px); }
@@ -650,9 +665,16 @@ export default function WriterLandingPage() {
           <div className="grid md:grid-cols-12 gap-12">
             <div className="md:col-span-4">
               <p className="text-xs tracking-widest text-wine mb-3">אודות</p>
-              <h2 className="font-display text-4xl leading-tight">
+              <h2 className="font-display text-4xl leading-tight mb-8">
                 כתיבה כמרחב בין שיר לסיפור
               </h2>
+              <div className="about-photo-frame">
+                <img
+                  src={authorPhoto}
+                  alt={writer.name || "תמונת היוצר/ת"}
+                  className="w-full h-full object-cover"
+                />
+              </div>
             </div>
             <div className="md:col-span-7 md:col-start-6">
               {writer.bio.map((p, i) => (
