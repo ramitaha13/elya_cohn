@@ -1,5 +1,19 @@
-import React, { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { db } from "../firebase"; // התאם את הנתיב למיקום firebase.js שלך
+import {
+  collection,
+  doc,
+  addDoc,
+  deleteDoc,
+  updateDoc,
+  setDoc,
+  getDoc,
+  onSnapshot,
+  orderBy,
+  query,
+  serverTimestamp,
+} from "firebase/firestore";
 
 /**
  * דף ראשי ליוצר/ת (Dashboard) — מוצג לאחר התחברות מוצלחת.
@@ -7,9 +21,10 @@ import { Link, useNavigate } from "react-router-dom";
  * הוסיפו route בקובץ ה-App שלכם:
  *    <Route path="/dashboard" element={<DashboardPage />} />
  *
- * הנתונים כאן (יצירות, הודעות) הם דמה (mock) לתצוגה בלבד.
- * כדי לחבר נתונים אמיתיים: יש להחליף את ה-state ההתחלתי בקריאת API,
- * ואת הפעולות (הוספה/מחיקה/שמירה) בקריאות PUT/POST/DELETE בהתאם.
+ * הנתונים כאן מגיעים מ-Firestore:
+ *  - "works"   — קולקשן יצירות (כל יצירה = דוקומנט)
+ *  - "messages"— קולקשן הודעות מהאתר (נכתב על-ידי טופס יצירת הקשר)
+ *  - "profile/main" — דוקומנט יחיד עם פרטי הפרופיל
  */
 
 const BRAND = {
@@ -17,40 +32,11 @@ const BRAND = {
   initials: "א.כ",
 };
 
-const INITIAL_WORKS = [
-  { id: 1, title: "אור בין הצלעות", category: "שיר", year: "2024" },
-  { id: 2, title: "הבית שלא נמכר", category: "סיפור", year: "2023" },
-  { id: 3, title: "כמו שעון בלי מחוגים", category: "מילים לשיר", year: "2023" },
-  { id: 4, title: "שלוש דקות של חורף", category: "שיר", year: "2022" },
-  { id: 5, title: "האיש שספר את הצעדים", category: "סיפור", year: "2021" },
-];
-
-const INITIAL_MESSAGES = [
-  {
-    id: 1,
-    name: "נועה לוי",
-    email: "noa.levi@example.com",
-    message: "שלום, אהבתי מאוד את 'אור בין הצלעות'. אפשר לקבוע שיחה?",
-    date: "22.06.2026",
-    read: false,
-  },
-  {
-    id: 2,
-    name: "דניאל ברק",
-    email: "daniel.barak@example.com",
-    message: "מחפש כותב למילים לאלבום הבא שלנו, נשמח לשמוע אם זה מעניין אותך.",
-    date: "18.06.2026",
-    read: false,
-  },
-  {
-    id: 3,
-    name: "מיכל אברהם",
-    email: "michal.a@example.com",
-    message: "האם הסיפור 'הבית שלא נמכר' פורסם גם בכתב עת?",
-    date: "10.06.2026",
-    read: true,
-  },
-];
+const DEFAULT_PROFILE = {
+  name: BRAND.name,
+  tagline: "מילים שנעות בין שיר לסיפור לציור",
+  bio: "אילייה כהן הוא יוצר רב־תחומי המתמחה ביצירה מקורית...",
+};
 
 const NAV_ITEMS = [
   { id: "overview", label: "סקירה" },
@@ -58,6 +44,17 @@ const NAV_ITEMS = [
   { id: "messages", label: "הודעות" },
   { id: "profile", label: "פרופיל" },
 ];
+
+function formatDate(ts) {
+  if (!ts) return "—";
+  // Firestore Timestamp -> Date
+  const d = typeof ts.toDate === "function" ? ts.toDate() : new Date(ts);
+  return d.toLocaleDateString("he-IL", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}
 
 function Seal({ size = 56 }) {
   return (
@@ -87,16 +84,25 @@ function StatCard({ label, value, hint }) {
   );
 }
 
-function OverviewTab({ works, messages, onGoTo }) {
+function OverviewTab({ works, messages, loading, onGoTo }) {
   const unread = messages.filter((m) => !m.read).length;
   return (
     <div>
       <div className="grid-stats">
-        <StatCard label="יצירות פורסמו" value={works.length} />
+        <StatCard
+          label="יצירות פורסמו"
+          value={loading.works ? "…" : works.length}
+        />
         <StatCard
           label="הודעות שלא נקראו"
-          value={unread}
-          hint={unread > 0 ? "יש הודעות חדשות" : "הכול נקרא"}
+          value={loading.messages ? "…" : unread}
+          hint={
+            !loading.messages && unread > 0
+              ? "יש הודעות חדשות"
+              : !loading.messages
+                ? "הכול נקרא"
+                : null
+          }
         />
         <StatCard label="צפיות בדף (30 יום)" value="1,284" hint="דמו" />
       </div>
@@ -108,44 +114,87 @@ function OverviewTab({ works, messages, onGoTo }) {
             לכל ההודעות ←
           </button>
         </div>
-        <ul className="msg-mini-list">
-          {messages.slice(0, 3).map((m) => (
-            <li key={m.id} className={`msg-mini ${m.read ? "" : "is-unread"}`}>
-              <span className="msg-mini-name">{m.name}</span>
-              <span className="msg-mini-text">{m.message}</span>
-              <span className="msg-mini-date">{m.date}</span>
-            </li>
-          ))}
-        </ul>
+        {loading.messages ? (
+          <p className="text-muted text-sm py-4 text-center">טוען הודעות...</p>
+        ) : (
+          <ul className="msg-mini-list">
+            {messages.slice(0, 3).map((m) => (
+              <li
+                key={m.id}
+                className={`msg-mini ${m.read ? "" : "is-unread"}`}
+              >
+                <span className="msg-mini-name">{m.name}</span>
+                <span className="msg-mini-text">{m.message}</span>
+                <span className="msg-mini-date">{m.date}</span>
+              </li>
+            ))}
+            {messages.length === 0 && (
+              <p className="text-muted text-sm py-4 text-center">
+                אין עדיין הודעות.
+              </p>
+            )}
+          </ul>
+        )}
       </div>
     </div>
   );
 }
 
-function WorksTab({ works, setWorks }) {
+function WorksTab({ works, loading, onAdd, onRemove, onToggleFeatured }) {
   const [adding, setAdding] = useState(false);
-  const [draft, setDraft] = useState({ title: "", category: "שיר", year: "" });
+  const [saving, setSaving] = useState(false);
+  const [draft, setDraft] = useState({
+    title: "",
+    category: "שיר",
+    year: "",
+    excerpt: "",
+    featured: false,
+  });
 
-  const removeWork = (id) => {
-    // TODO: לחבר קריאת DELETE לשרת
-    setWorks((prev) => prev.filter((w) => w.id !== id));
+  const handleRemove = async (id) => {
+    try {
+      await onRemove(id);
+    } catch (err) {
+      console.error("שגיאה במחיקת יצירה:", err);
+      alert("מחיקת היצירה נכשלה, נסו שוב.");
+    }
   };
 
-  const addWork = (e) => {
+  const handleToggleFeatured = async (work) => {
+    try {
+      await onToggleFeatured(work.id, !work.featured);
+    } catch (err) {
+      console.error("שגיאה בעדכון סטטוס נבחרת:", err);
+      alert("העדכון נכשל, נסו שוב.");
+    }
+  };
+
+  const addWork = async (e) => {
     e.preventDefault();
     if (!draft.title.trim()) return;
-    // TODO: לחבר קריאת POST לשרת ולקבל id אמיתי בתגובה
-    setWorks((prev) => [
-      {
-        id: Date.now(),
+    setSaving(true);
+    try {
+      await onAdd({
         title: draft.title,
         category: draft.category,
         year: draft.year || "—",
-      },
-      ...prev,
-    ]);
-    setDraft({ title: "", category: "שיר", year: "" });
-    setAdding(false);
+        excerpt: draft.excerpt,
+        featured: draft.featured,
+      });
+      setDraft({
+        title: "",
+        category: "שיר",
+        year: "",
+        excerpt: "",
+        featured: false,
+      });
+      setAdding(false);
+    } catch (err) {
+      console.error("שגיאה בהוספת יצירה:", err);
+      alert("הוספת היצירה נכשלה, נסו שוב.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -159,6 +208,10 @@ function WorksTab({ works, setWorks }) {
           {adding ? "ביטול" : "+ יצירה חדשה"}
         </button>
       </div>
+      <p className="text-muted text-xs mb-4">
+        רק יצירות שמסומנות כ"נבחרת" יוצגו בעמוד "יצירות נבחרות" בדף הנחיתה. שאר
+        היצירות נשמרות כאן בלבד.
+      </p>
 
       {adding && (
         <form onSubmit={addWork} className="add-work-form">
@@ -186,112 +239,172 @@ function WorksTab({ works, setWorks }) {
             value={draft.year}
             onChange={(e) => setDraft((d) => ({ ...d, year: e.target.value }))}
           />
-          <button type="submit" className="btn-fill px-5 py-2 text-xs">
-            שמירה
+          <input
+            className="form-input"
+            placeholder="תקציר (אופציונלי, יוצג בדף הנחיתה)"
+            value={draft.excerpt}
+            onChange={(e) =>
+              setDraft((d) => ({ ...d, excerpt: e.target.value }))
+            }
+          />
+          <label className="featured-check">
+            <input
+              type="checkbox"
+              checked={draft.featured}
+              onChange={(e) =>
+                setDraft((d) => ({ ...d, featured: e.target.checked }))
+              }
+            />
+            יצירה נבחרת (תוצג בדף הנחיתה)
+          </label>
+          <button
+            type="submit"
+            className="btn-fill px-5 py-2 text-xs"
+            disabled={saving}
+          >
+            {saving ? "שומר..." : "שמירה"}
           </button>
         </form>
       )}
 
-      <div className="work-table">
-        {works.map((w) => (
-          <div key={w.id} className="work-row">
-            <span className="work-title font-display">{w.title}</span>
-            <span className="work-meta">
-              {w.category} · {w.year}
-            </span>
-            <div className="work-actions">
-              <button className="link-btn">עריכה</button>
-              <button
-                className="link-btn link-btn-danger"
-                onClick={() => removeWork(w.id)}
-              >
-                מחיקה
-              </button>
+      {loading ? (
+        <p className="text-muted text-sm py-6 text-center">טוען יצירות...</p>
+      ) : (
+        <div className="work-table">
+          {works.map((w) => (
+            <div key={w.id} className="work-row">
+              <span className="work-title font-display">{w.title}</span>
+              <span className="work-meta">
+                {w.category} · {w.year}
+              </span>
+              {w.featured && <span className="featured-pill">נבחרת</span>}
+              <div className="work-actions">
+                <button
+                  className="link-btn"
+                  onClick={() => handleToggleFeatured(w)}
+                >
+                  {w.featured ? "הסר מהנבחרות" : "הצג כנבחרת"}
+                </button>
+                <button className="link-btn">עריכה</button>
+                <button
+                  className="link-btn link-btn-danger"
+                  onClick={() => handleRemove(w.id)}
+                >
+                  מחיקה
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
-        {works.length === 0 && (
-          <p className="text-muted text-sm py-6 text-center">
-            אין עדיין יצירות. הוסיפו את הראשונה.
-          </p>
-        )}
-      </div>
+          ))}
+          {works.length === 0 && (
+            <p className="text-muted text-sm py-6 text-center">
+              אין עדיין יצירות. הוסיפו את הראשונה.
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
-function MessagesTab({ messages, setMessages }) {
-  const markRead = (id) => {
-    setMessages((prev) =>
-      prev.map((m) => (m.id === id ? { ...m, read: true } : m)),
-    );
+function MessagesTab({ messages, loading, onMarkRead, onDelete }) {
+  const markRead = async (id) => {
+    try {
+      await onMarkRead(id);
+    } catch (err) {
+      console.error("שגיאה בעדכון הודעה:", err);
+    }
   };
-  const deleteMessage = (id) => {
-    setMessages((prev) => prev.filter((m) => m.id !== id));
+  const deleteMessage = async (id) => {
+    try {
+      await onDelete(id);
+    } catch (err) {
+      console.error("שגיאה במחיקת הודעה:", err);
+      alert("מחיקת ההודעה נכשלה, נסו שוב.");
+    }
   };
 
   return (
     <div>
       <h3 className="font-display text-xl mb-6">הודעות מהאתר</h3>
-      <div className="msg-list">
-        {messages.map((m) => (
-          <div key={m.id} className={`msg-card ${m.read ? "" : "is-unread"}`}>
-            <div className="msg-card-head">
-              <div>
-                <p className="msg-card-name font-display">{m.name}</p>
-                <a href={`mailto:${m.email}`} className="msg-card-email">
-                  {m.email}
-                </a>
+      {loading ? (
+        <p className="text-muted text-sm py-6 text-center">טוען הודעות...</p>
+      ) : (
+        <div className="msg-list">
+          {messages.map((m) => (
+            <div key={m.id} className={`msg-card ${m.read ? "" : "is-unread"}`}>
+              <div className="msg-card-head">
+                <div>
+                  <p className="msg-card-name font-display">{m.name}</p>
+                  <a href={`mailto:${m.email}`} className="msg-card-email">
+                    {m.email}
+                  </a>
+                </div>
+                <span className="msg-card-date">{m.date}</span>
               </div>
-              <span className="msg-card-date">{m.date}</span>
-            </div>
-            <p className="msg-card-body">{m.message}</p>
-            <div className="msg-card-actions">
-              {!m.read && (
-                <button className="link-btn" onClick={() => markRead(m.id)}>
-                  סמן כנקרא
+              <p className="msg-card-body">{m.message}</p>
+              <div className="msg-card-actions">
+                {!m.read && (
+                  <button className="link-btn" onClick={() => markRead(m.id)}>
+                    סמן כנקרא
+                  </button>
+                )}
+                <a href={`mailto:${m.email}`} className="link-btn">
+                  השב במייל
+                </a>
+                <button
+                  className="link-btn link-btn-danger"
+                  onClick={() => deleteMessage(m.id)}
+                >
+                  מחיקה
                 </button>
-              )}
-              <a href={`mailto:${m.email}`} className="link-btn">
-                השב במייל
-              </a>
-              <button
-                className="link-btn link-btn-danger"
-                onClick={() => deleteMessage(m.id)}
-              >
-                מחיקה
-              </button>
+              </div>
             </div>
-          </div>
-        ))}
-        {messages.length === 0 && (
-          <p className="text-muted text-sm py-6 text-center">
-            אין הודעות חדשות.
-          </p>
-        )}
-      </div>
+          ))}
+          {messages.length === 0 && (
+            <p className="text-muted text-sm py-6 text-center">
+              אין הודעות חדשות.
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
-function ProfileTab() {
-  const [profile, setProfile] = useState({
-    name: BRAND.name,
-    tagline: "מילים שנעות בין שיר לסיפור לציור",
-    bio: "אילייה כהן הוא יוצר רב־תחומי המתמחה ביצירה מקורית...",
-  });
+function ProfileTab({ profile, loading, onSave }) {
+  const [draft, setDraft] = useState(profile);
+  const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+
+  // מסנכרן את הטופס עם הנתונים שנטענו מ-Firestore (בטעינה הראשונית)
+  useEffect(() => {
+    setDraft(profile);
+  }, [profile]);
 
   const handleChange = (e) => {
     setSaved(false);
-    setProfile((p) => ({ ...p, [e.target.name]: e.target.value }));
+    setDraft((p) => ({ ...p, [e.target.name]: e.target.value }));
   };
 
-  const handleSave = (e) => {
+  const handleSave = async (e) => {
     e.preventDefault();
-    // TODO: לחבר קריאת PUT לשרת לשמירת הפרופיל
-    setSaved(true);
+    setSaving(true);
+    try {
+      await onSave(draft);
+      setSaved(true);
+    } catch (err) {
+      console.error("שגיאה בשמירת פרופיל:", err);
+      alert("שמירת הפרופיל נכשלה, נסו שוב.");
+    } finally {
+      setSaving(false);
+    }
   };
+
+  if (loading) {
+    return (
+      <p className="text-muted text-sm py-6 text-center">טוען פרופיל...</p>
+    );
+  }
 
   return (
     <div>
@@ -302,7 +415,7 @@ function ProfileTab() {
           <input
             name="name"
             className="form-input"
-            value={profile.name}
+            value={draft.name}
             onChange={handleChange}
           />
         </div>
@@ -311,7 +424,7 @@ function ProfileTab() {
           <input
             name="tagline"
             className="form-input"
-            value={profile.tagline}
+            value={draft.tagline}
             onChange={handleChange}
           />
         </div>
@@ -321,12 +434,16 @@ function ProfileTab() {
             name="bio"
             rows={5}
             className="form-input form-textarea"
-            value={profile.bio}
+            value={draft.bio}
             onChange={handleChange}
           />
         </div>
-        <button type="submit" className="btn-fill px-6 py-3 text-sm">
-          שמירת שינויים
+        <button
+          type="submit"
+          className="btn-fill px-6 py-3 text-sm"
+          disabled={saving}
+        >
+          {saving ? "שומר..." : "שמירת שינויים"}
         </button>
         {saved && <span className="saved-pill">נשמר ✓</span>}
       </form>
@@ -337,8 +454,120 @@ function ProfileTab() {
 export default function DashboardPage() {
   const navigate = useNavigate();
   const [tab, setTab] = useState("overview");
-  const [works, setWorks] = useState(INITIAL_WORKS);
-  const [messages, setMessages] = useState(INITIAL_MESSAGES);
+
+  const [works, setWorks] = useState([]);
+  const [messages, setMessages] = useState([]);
+  const [profile, setProfile] = useState(DEFAULT_PROFILE);
+
+  const [loading, setLoading] = useState({
+    works: true,
+    messages: true,
+    profile: true,
+  });
+
+  // --- האזנה בזמן אמת ליצירות (works) ---
+  useEffect(() => {
+    const q = query(collection(db, "works"), orderBy("createdAt", "desc"));
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const data = snapshot.docs.map((d) => {
+          const v = d.data();
+          return {
+            id: d.id,
+            title: v.title || "",
+            category: v.category || "שיר",
+            year: v.year || "—",
+            excerpt: v.excerpt || "",
+            featured: !!v.featured,
+          };
+        });
+        setWorks(data);
+        setLoading((prev) => ({ ...prev, works: false }));
+      },
+      (err) => {
+        console.error("שגיאה בטעינת יצירות:", err);
+        setLoading((prev) => ({ ...prev, works: false }));
+      },
+    );
+    return () => unsubscribe();
+  }, []);
+
+  // --- האזנה בזמן אמת להודעות (messages) ---
+  useEffect(() => {
+    const q = query(collection(db, "messages"), orderBy("createdAt", "desc"));
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const data = snapshot.docs.map((d) => {
+          const v = d.data();
+          return {
+            id: d.id,
+            name: v.name || "",
+            email: v.email || "",
+            message: v.message || "",
+            date: formatDate(v.createdAt),
+            read: !!v.read,
+          };
+        });
+        setMessages(data);
+        setLoading((prev) => ({ ...prev, messages: false }));
+      },
+      (err) => {
+        console.error("שגיאה בטעינת הודעות:", err);
+        setLoading((prev) => ({ ...prev, messages: false }));
+      },
+    );
+    return () => unsubscribe();
+  }, []);
+
+  // --- טעינת פרופיל חד-פעמית ---
+  useEffect(() => {
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, "profile", "main"));
+        if (snap.exists()) {
+          setProfile({ ...DEFAULT_PROFILE, ...snap.data() });
+        } else {
+          // אין עדיין דוקומנט פרופיל — שומרים את הדפולט הראשוני
+          await setDoc(doc(db, "profile", "main"), DEFAULT_PROFILE);
+          setProfile(DEFAULT_PROFILE);
+        }
+      } catch (err) {
+        console.error("שגיאה בטעינת פרופיל:", err);
+      } finally {
+        setLoading((prev) => ({ ...prev, profile: false }));
+      }
+    })();
+  }, []);
+
+  // --- פעולות יצירות ---
+  const handleAddWork = async (workData) => {
+    await addDoc(collection(db, "works"), {
+      ...workData,
+      createdAt: serverTimestamp(),
+    });
+  };
+  const handleRemoveWork = async (id) => {
+    await deleteDoc(doc(db, "works", id));
+  };
+  const handleToggleFeatured = async (id, featured) => {
+    await updateDoc(doc(db, "works", id), { featured });
+  };
+
+  // --- פעולות הודעות ---
+  const handleMarkRead = async (id) => {
+    await updateDoc(doc(db, "messages", id), { read: true });
+  };
+  const handleDeleteMessage = async (id) => {
+    await deleteDoc(doc(db, "messages", id));
+  };
+
+  // --- פעולת פרופיל ---
+  const handleSaveProfile = async (newProfile) => {
+    await setDoc(doc(db, "profile", "main"), newProfile, { merge: true });
+    setProfile(newProfile);
+  };
 
   const handleLogout = () => {
     // TODO: לנקות טוקן/סשן אמיתי כאן (localStorage / cookie / context)
@@ -522,6 +751,22 @@ export default function DashboardPage() {
         .work-title{ font-size:16px; flex-shrink:0; }
         .work-meta{ color:var(--muted); font-size:12px; flex:1; }
         .work-actions{ display:flex; gap:14px; flex-shrink:0; }
+        .featured-check{
+          display:flex;
+          align-items:center;
+          gap:8px;
+          font-size:12px;
+          color:var(--muted-2);
+          flex-basis:100%;
+        }
+        .featured-pill{
+          font-size:10px;
+          letter-spacing:.04em;
+          color:var(--wine);
+          border:1px solid rgba(122,46,58,0.3);
+          padding:2px 8px;
+          flex-shrink:0;
+        }
 
         /* Messages tab */
         .msg-list{ display:flex; flex-direction:column; gap:14px; }
@@ -559,7 +804,9 @@ export default function DashboardPage() {
         <div className="dash-brand">
           <Seal size={40} />
           <div>
-            <p className="dash-brand-name font-display">{BRAND.name}</p>
+            <p className="dash-brand-name font-display">
+              {profile.name || BRAND.name}
+            </p>
             <p className="dash-brand-sub">אזור יוצר</p>
           </div>
         </div>
@@ -584,13 +831,37 @@ export default function DashboardPage() {
 
       <main className="dash-main">
         {tab === "overview" && (
-          <OverviewTab works={works} messages={messages} onGoTo={setTab} />
+          <OverviewTab
+            works={works}
+            messages={messages}
+            loading={loading}
+            onGoTo={setTab}
+          />
         )}
-        {tab === "works" && <WorksTab works={works} setWorks={setWorks} />}
+        {tab === "works" && (
+          <WorksTab
+            works={works}
+            loading={loading.works}
+            onAdd={handleAddWork}
+            onRemove={handleRemoveWork}
+            onToggleFeatured={handleToggleFeatured}
+          />
+        )}
         {tab === "messages" && (
-          <MessagesTab messages={messages} setMessages={setMessages} />
+          <MessagesTab
+            messages={messages}
+            loading={loading.messages}
+            onMarkRead={handleMarkRead}
+            onDelete={handleDeleteMessage}
+          />
         )}
-        {tab === "profile" && <ProfileTab />}
+        {tab === "profile" && (
+          <ProfileTab
+            profile={profile}
+            loading={loading.profile}
+            onSave={handleSaveProfile}
+          />
+        )}
       </main>
     </div>
   );

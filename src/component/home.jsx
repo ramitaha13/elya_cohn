@@ -1,19 +1,34 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 // ייבוא התמונה כמודול - כך זה עובד נכון ב-Vite/CRA בלי קשר למיקום התיקייה
 import writerPhoto from "../assets/IMG_8080.jpg";
+// חיבור ל-Firestore
+import { db } from "../firebase"; // התאם את הנתיב למיקום firebase.js שלך
+import {
+  collection,
+  doc,
+  addDoc,
+  serverTimestamp,
+  query,
+  orderBy,
+  onSnapshot,
+} from "firebase/firestore";
 
 /**
  * דף נחיתה ליוצר/ת - שירה, סיפורת ויצירה רב-תחומית
  * -------------------------------------------------
- * תוכן זה הוא תוכן הדגמה (Placeholder) — יש להחליף:
- *  1. WRITER.name / WRITER.tagline / WRITER.bio
+ *  1. DEFAULT_WRITER הוא תוכן דמו/פולבק — name / tagline / bio נטענים בפועל
+ *     מ-Firestore (דוקומנט "profile/main") ומחליפים אותו אוטומטית בזמן אמת.
+ *     role, excerpt ו-initials אינם חלק מה-Profile בדשבורד ונשארים סטטיים
+ *     כאן (אפשר להוסיף אותם לדשבורד בהמשך אם תרצה שגם הם יתעדכנו).
  *  2. את תמונת היוצר/ת — חפשו את ההערה "TODO: תמונה" והחליפו את ה-placeholder ב-<img src="..." />
- *  3. את הרשימה WORKS ביצירות האמיתיות
- *  4. את כתובת השליחה של הטופס בפונקציה handleSubmit (כרגע הוא רק מדמה שליחה)
+ *  3. רשימת היצירות נטענת מ-Firestore (קולקשן "works") ומסוננת להציג רק
+ *     יצירות שסומנו "נבחרת" (featured: true) בדשבורד. FALLBACK_WORKS מוצג
+ *     רק כל עוד אין עדיין יצירות נבחרות שמורות.
+ *  4. שליחת הטופס כבר מחוברת ל-Firestore (קולקשן "messages")
  */
 
-const WRITER = {
+const DEFAULT_WRITER = {
   name: "אילייה כהן",
   initials: "א.כ",
   tagline: " מילים שנעות בין שיר לסיפור לציור",
@@ -34,7 +49,8 @@ const DISCIPLINES = [
   { he: "סדנאות כתיבה", sub: "Workshops" },
 ];
 
-const WORKS = [
+// תוכן דמו שמוצג רק כל עוד אין עדיין יצירות שמורות ב-Firestore (כלומר עד שהיוצר מוסיף יצירות בדשבורד)
+const FALLBACK_WORKS = [
   {
     title: "אור בין הצלעות",
     category: "שיר",
@@ -109,7 +125,7 @@ function Seal({ size = 96 }) {
         <circle cx="50" cy="50" r="47" className="seal-ring-outer" />
         <circle cx="50" cy="50" r="40" className="seal-ring-inner" />
         <text x="50" y="58" textAnchor="middle" className="seal-text">
-          {WRITER.initials}
+          {DEFAULT_WRITER.initials}
         </text>
       </svg>
     </div>
@@ -117,9 +133,8 @@ function Seal({ size = 96 }) {
 }
 
 /**
- * טופס יצירת קשר קטן: שם, אימייל, הודעה.
- * כרגע השליחה מדומה (מציגה הודעת תודה) — כשתחברו בקאנד/שירות מיילים,
- * החליפו את הלוגיקה בתוך handleSubmit.
+ * טופס יצירת קשר: שם, אימייל, הודעה.
+ * השליחה שומרת את ההודעה ב-Firestore, בקולקשן "messages".
  */
 function ContactForm() {
   const [form, setForm] = useState({ name: "", email: "", message: "" });
@@ -138,18 +153,21 @@ function ContactForm() {
     }
     setStatus("sending");
 
-    // TODO: כאן יש לחבר שליחה אמיתית — לדוגמה fetch לשירות מיילים, Formspree, או API משלכם.
-    // לדוגמה:
-    // await fetch("https://your-endpoint.example.com/contact", {
-    //   method: "POST",
-    //   headers: { "Content-Type": "application/json" },
-    //   body: JSON.stringify(form),
-    // });
+    try {
+      await addDoc(collection(db, "messages"), {
+        name: form.name,
+        email: form.email,
+        message: form.message,
+        read: false,
+        createdAt: serverTimestamp(),
+      });
 
-    setTimeout(() => {
       setStatus("sent");
       setForm({ name: "", email: "", message: "" });
-    }, 600);
+    } catch (err) {
+      console.error("שגיאה בשמירת ההודעה ל-Firestore:", err);
+      setStatus("error");
+    }
   };
 
   if (status === "sent") {
@@ -218,7 +236,8 @@ function ContactForm() {
 
       {status === "error" && (
         <p className="text-wine text-xs mb-4 text-right">
-          נא למלא שם, אימייל והודעה לפני השליחה.
+          נא למלא שם, אימייל והודעה לפני השליחה, או שהייתה שגיאה בשמירה — נסו
+          שוב.
         </p>
       )}
 
@@ -237,6 +256,74 @@ export default function WriterLandingPage() {
   const scrolled = useScrolled();
   const navigate = useNavigate();
   const [openWork, setOpenWork] = useState(null);
+  const [works, setWorks] = useState([]);
+  const [loadingWorks, setLoadingWorks] = useState(true);
+  const [profile, setProfile] = useState(null);
+
+  // טוען את הפרופיל בזמן אמת מ-Firestore (דוקומנט profile/main, מנוהל מהדשבורד)
+  useEffect(() => {
+    const unsubscribe = onSnapshot(
+      doc(db, "profile", "main"),
+      (snap) => {
+        setProfile(snap.exists() ? snap.data() : null);
+      },
+      (err) => {
+        console.error("שגיאה בטעינת פרופיל:", err);
+      },
+    );
+    return () => unsubscribe();
+  }, []);
+
+  // מאחד את נתוני הפרופיל מ-Firestore עם הדפולטים. role / excerpt / initials
+  // אינם נשמרים כרגע בדשבורד ונשארים תמיד מהדפולט.
+  const writer = {
+    ...DEFAULT_WRITER,
+    name: profile?.name?.trim() ? profile.name : DEFAULT_WRITER.name,
+    tagline: profile?.tagline?.trim()
+      ? profile.tagline
+      : DEFAULT_WRITER.tagline,
+    bio:
+      profile?.bio && profile.bio.trim()
+        ? profile.bio.split(/\n+/).filter(Boolean)
+        : DEFAULT_WRITER.bio,
+  };
+
+  // טוען את היצירות בזמן אמת מ-Firestore ומסנן להציג רק יצירות שסומנו
+  // "נבחרת" (featured: true) בדשבורד. הסינון נעשה בצד הלקוח כדי לא לדרוש
+  // אינדקס מורכב ב-Firestore.
+  useEffect(() => {
+    const q = query(collection(db, "works"), orderBy("createdAt", "desc"));
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const data = snapshot.docs
+          .map((d) => {
+            const v = d.data();
+            return {
+              id: d.id,
+              title: v.title || "",
+              category: v.category || "",
+              year: v.year || "",
+              excerpt: v.excerpt || "",
+              featured: !!v.featured,
+            };
+          })
+          .filter((w) => w.featured);
+        setWorks(data);
+        setLoadingWorks(false);
+      },
+      (err) => {
+        console.error("שגיאה בטעינת יצירות:", err);
+        setLoadingWorks(false);
+      },
+    );
+    return () => unsubscribe();
+  }, []);
+
+  // כל עוד אין יצירות נבחרות שמורות (טעינה ראשונית, או שעדיין לא סומנה אף
+  // יצירה), מציגים תוכן דמו
+  const displayedWorks =
+    loadingWorks || works.length === 0 ? FALLBACK_WORKS : works;
 
   const scrollTo = (id) => {
     const el = document.getElementById(id);
@@ -489,7 +576,7 @@ export default function WriterLandingPage() {
             onClick={() => scrollTo("hero")}
             className="font-display text-lg text-parchment"
           >
-            {WRITER.name}
+            {writer.name}
           </button>
           <ul className="hidden md:flex items-center gap-8 text-sm">
             {NAV_LINKS.map((l) => (
@@ -518,16 +605,16 @@ export default function WriterLandingPage() {
           {/* Text side */}
           <div className="order-2 md:order-1">
             <p className="rise-in text-xs tracking-widest text-muted mb-5">
-              {WRITER.role}
+              {writer.role}
             </p>
             <h1 className="rise-in delay-1 font-display text-5xl md:text-6xl leading-[1.15] mb-6">
-              {WRITER.name}
+              {writer.name}
             </h1>
             <p className="rise-in delay-2 font-display text-xl text-gold-soft mb-8">
-              {WRITER.tagline}
+              {writer.tagline}
             </p>
             <p className="rise-in delay-3 text-muted text-base leading-relaxed border-r-2 border-gold pr-4 mb-10 max-w-md">
-              {WRITER.excerpt}
+              {writer.excerpt}
             </p>
             <div className="rise-in delay-4 flex flex-wrap gap-4">
               <button
@@ -545,7 +632,7 @@ export default function WriterLandingPage() {
               <div className="portrait-inner">
                 <img
                   src={writerPhoto}
-                  alt={WRITER.name || "תמונת היוצר/ת"}
+                  alt={writer.name || "תמונת היוצר/ת"}
                   className="w-full h-full object-cover"
                 />
               </div>
@@ -566,7 +653,7 @@ export default function WriterLandingPage() {
               </h2>
             </div>
             <div className="md:col-span-7 md:col-start-6">
-              {WRITER.bio.map((p, i) => (
+              {writer.bio.map((p, i) => (
                 <p
                   key={i}
                   className="text-muted-2 leading-loose text-[17px] mb-5"
@@ -577,7 +664,7 @@ export default function WriterLandingPage() {
               <div className="flex items-start gap-4 mt-10 bg-parchment-2 p-6 border-r-2 border-wine">
                 <span className="quote-mark text-5xl text-wine">”</span>
                 <p className="font-display text-xl leading-relaxed pt-2">
-                  {WRITER.excerpt}
+                  {writer.excerpt}
                 </p>
               </div>
             </div>
@@ -623,10 +710,11 @@ export default function WriterLandingPage() {
           </div>
 
           <div className="border-t border-muted">
-            {WORKS.map((w, i) => {
+            {displayedWorks.map((w, i) => {
               const isOpen = openWork === i;
+              const key = w.id || w.title || i;
               return (
-                <div key={w.title} className="border-b border-muted">
+                <div key={key} className="border-b border-muted">
                   <button
                     onClick={() => setOpenWork(isOpen ? null : i)}
                     className="toc-row w-full flex items-center py-5 text-right"
@@ -656,12 +744,18 @@ export default function WriterLandingPage() {
                   </button>
                   <div className={`work-excerpt ${isOpen ? "is-open" : ""}`}>
                     <p className="text-muted-2 leading-relaxed text-[15px] pb-6 pr-1 max-w-xl">
-                      {w.excerpt}
+                      {w.excerpt || "אין עדיין תקציר ליצירה זו."}
                     </p>
                   </div>
                 </div>
               );
             })}
+            {!loadingWorks && works.length === 0 && (
+              <p className="text-muted text-xs text-center pt-6">
+                (מוצג תוכן דמו זמני — היצירות שתוסיפו בדשבורד יחליפו אותו
+                אוטומטית)
+              </p>
+            )}
           </div>
         </div>
       </section>
@@ -671,7 +765,7 @@ export default function WriterLandingPage() {
         <div className="max-w-2xl mx-auto px-6">
           <Seal size={64} />
           <p className="font-display text-2xl md:text-3xl text-parchment leading-relaxed mt-8">
-            {WRITER.excerpt}
+            {writer.excerpt}
           </p>
           <Flourish className="my-10" />
         </div>
@@ -685,10 +779,10 @@ export default function WriterLandingPage() {
             <div>
               <p className="text-xs tracking-widest text-wine mb-3">צור קשר</p>
               <h3 className="font-display text-3xl text-parchment mb-4">
-                {WRITER.name}
+                {writer.name}
               </h3>
               <p className="text-muted text-sm leading-relaxed mb-10 max-w-sm">
-                {WRITER.role}. כתבו כמה שורות — אשתדל לחזור בהקדם.
+                {writer.role}. כתבו כמה שורות — אשתדל לחזור בהקדם.
               </p>
               <p className="text-xs tracking-widest text-gold mb-4">עקבו</p>
               <div className="flex gap-4">
@@ -711,7 +805,7 @@ export default function WriterLandingPage() {
           </div>
           <div className="border-t border-[rgba(201,166,70,0.2)] pt-6 flex flex-col md:flex-row justify-between gap-3">
             <p className="text-xs text-muted">
-              © {new Date().getFullYear()} {WRITER.name}. כל הזכויות שמורות.
+              © {new Date().getFullYear()} {writer.name}. כל הזכויות שמורות.
             </p>
             <p className="text-xs text-muted">נבנה באהבה למילים.</p>
           </div>
