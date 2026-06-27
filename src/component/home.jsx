@@ -791,7 +791,9 @@ export default function WriterLandingPage() {
                 {["דמה חדשה"].map((s) => (
                   <a
                     key={s}
-                    href="#"
+                    href="http://stage.co.il/Authors/IliaCohen"
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="text-muted text-sm hover:text-gold-soft transition-colors"
                   >
                     {s}
