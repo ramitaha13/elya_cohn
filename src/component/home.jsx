@@ -9,12 +9,13 @@ import writerPhoto from "../assets/IMG_8080.jpg";
  *  1. WRITER.name / WRITER.tagline / WRITER.bio
  *  2. את תמונת היוצר/ת — חפשו את ההערה "TODO: תמונה" והחליפו את ה-placeholder ב-<img src="..." />
  *  3. את הרשימה WORKS ביצירות האמיתיות
+ *  4. את כתובת השליחה של הטופס בפונקציה handleSubmit (כרגע הוא רק מדמה שליחה)
  */
 
 const WRITER = {
   name: "אילייה כהן",
   initials: "א.כ",
-  tagline: "מילים שנעות בין שיר לסיפור",
+  tagline: " מילים שנעות בין שיר לסיפור לציור",
   role: "יוצר רב־תחומי · שירה · סיפורת · כתיבה למוזיקה",
   excerpt:
     "״כל שיר הוא דלת, וכל סיפור הוא חדר שמעבר לה. אני רק מחזיקה את המפתח.״",
@@ -111,6 +112,123 @@ function Seal({ size = 96 }) {
         </text>
       </svg>
     </div>
+  );
+}
+
+/**
+ * טופס יצירת קשר קטן: שם, אימייל, הודעה.
+ * כרגע השליחה מדומה (מציגה הודעת תודה) — כשתחברו בקאנד/שירות מיילים,
+ * החליפו את הלוגיקה בתוך handleSubmit.
+ */
+function ContactForm() {
+  const [form, setForm] = useState({ name: "", email: "", message: "" });
+  const [status, setStatus] = useState("idle"); // idle | sending | sent | error
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!form.name.trim() || !form.email.trim() || !form.message.trim()) {
+      setStatus("error");
+      return;
+    }
+    setStatus("sending");
+
+    // TODO: כאן יש לחבר שליחה אמיתית — לדוגמה fetch לשירות מיילים, Formspree, או API משלכם.
+    // לדוגמה:
+    // await fetch("https://your-endpoint.example.com/contact", {
+    //   method: "POST",
+    //   headers: { "Content-Type": "application/json" },
+    //   body: JSON.stringify(form),
+    // });
+
+    setTimeout(() => {
+      setStatus("sent");
+      setForm({ name: "", email: "", message: "" });
+    }, 600);
+  };
+
+  if (status === "sent") {
+    return (
+      <div className="contact-success border border-gold px-6 py-8 text-center">
+        <p className="font-display text-xl text-gold-soft mb-2">ההודעה נשלחה</p>
+        <p className="text-muted text-sm">תודה שכתבתם — אחזור אליכם בהקדם.</p>
+        <button
+          onClick={() => setStatus("idle")}
+          className="nav-link text-xs text-gold-soft mt-5 underline-grow is-on"
+        >
+          שליחת הודעה נוספת
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="contact-form" noValidate>
+      <div className="form-row">
+        <label htmlFor="cf-name" className="form-label">
+          שם מלא
+        </label>
+        <input
+          id="cf-name"
+          name="name"
+          type="text"
+          value={form.name}
+          onChange={handleChange}
+          className="form-input"
+          placeholder="איך לפנות אליכם"
+          autoComplete="name"
+        />
+      </div>
+
+      <div className="form-row">
+        <label htmlFor="cf-email" className="form-label">
+          אימייל
+        </label>
+        <input
+          id="cf-email"
+          name="email"
+          type="email"
+          value={form.email}
+          onChange={handleChange}
+          className="form-input"
+          placeholder="example@mail.com"
+          autoComplete="email"
+        />
+      </div>
+
+      <div className="form-row">
+        <label htmlFor="cf-message" className="form-label">
+          הודעה
+        </label>
+        <textarea
+          id="cf-message"
+          name="message"
+          rows={4}
+          value={form.message}
+          onChange={handleChange}
+          className="form-input form-textarea"
+          placeholder="מה תרצו לומר?"
+        />
+      </div>
+
+      {status === "error" && (
+        <p className="text-wine text-xs mb-4 text-right">
+          נא למלא שם, אימייל והודעה לפני השליחה.
+        </p>
+      )}
+
+      <button
+        type="submit"
+        disabled={status === "sending"}
+        className="btn-fill px-8 py-3 text-sm font-medium w-full md:w-auto disabled:opacity-60"
+      >
+        {status === "sending" ? "שולח..." : "שליחת ההודעה"}
+      </button>
+    </form>
   );
 }
 
@@ -311,6 +429,39 @@ export default function WriterLandingPage() {
           line-height:0.5;
         }
 
+        /* Contact form */
+        .contact-form{
+          max-width:480px;
+        }
+        .form-row{
+          margin-bottom:18px;
+          display:flex;
+          flex-direction:column;
+        }
+        .form-label{
+          font-size:12px;
+          letter-spacing:.05em;
+          color:var(--gold);
+          margin-bottom:8px;
+        }
+        .form-input{
+          background:transparent;
+          border:1px solid rgba(201,166,70,0.35);
+          color:var(--parchment);
+          padding:12px 14px;
+          font-family:'Heebo', sans-serif;
+          font-size:14px;
+          transition:border-color .25s ease, background-color .25s ease;
+        }
+        .form-input::placeholder{ color:var(--muted); }
+        .form-input:focus{
+          outline:none;
+          border-color:var(--gold);
+          background:rgba(201,166,70,0.05);
+        }
+        .form-textarea{ resize:vertical; min-height:96px; }
+        .contact-success{ max-width:480px; }
+
         /* Focus visibility */
         a:focus-visible, button:focus-visible{
           outline:2px solid var(--gold);
@@ -348,10 +499,10 @@ export default function WriterLandingPage() {
             ))}
           </ul>
           <button
-            onClick={() => scrollTo("contact")}
+            onClick={() => scrollTo("login")}
             className="btn-gold hidden md:inline-block px-4 py-2 text-xs"
           >
-            צרו קשר
+            כניסה
           </button>
         </div>
       </nav>
@@ -382,12 +533,6 @@ export default function WriterLandingPage() {
                 className="btn-fill px-6 py-3 text-sm font-medium"
               >
                 קריאת יצירות
-              </button>
-              <button
-                onClick={() => scrollTo("contact")}
-                className="btn-gold px-6 py-3 text-sm font-medium"
-              >
-                צרו קשר
               </button>
             </div>
           </div>
@@ -527,46 +672,25 @@ export default function WriterLandingPage() {
             {WRITER.excerpt}
           </p>
           <Flourish className="my-10" />
-          <button
-            onClick={() => {
-              const el = document.getElementById("contact");
-              if (el) el.scrollIntoView({ behavior: "smooth" });
-            }}
-            className="btn-fill px-8 py-3 text-sm font-medium"
-          >
-            רוצים לשתף פעולה? דברו איתי
-          </button>
         </div>
       </section>
 
       {/* CONTACT / FOOTER */}
       <footer id="contact" className="bg-ink-2 pt-20 pb-10">
         <div className="max-w-6xl mx-auto px-6">
-          <div className="grid md:grid-cols-3 gap-10 mb-14">
+          <div className="grid md:grid-cols-2 gap-14 mb-14">
+            {/* Left: intro + socials */}
             <div>
-              <h3 className="font-display text-2xl text-parchment mb-3">
+              <p className="text-xs tracking-widest text-wine mb-3">צור קשר</p>
+              <h3 className="font-display text-3xl text-parchment mb-4">
                 {WRITER.name}
               </h3>
-              <p className="text-muted text-sm leading-relaxed">
-                {WRITER.role}
+              <p className="text-muted text-sm leading-relaxed mb-10 max-w-sm">
+                {WRITER.role}. כתבו כמה שורות — אשתדל לחזור בהקדם.
               </p>
-            </div>
-            <div>
-              <p className="text-xs tracking-widest text-gold mb-4">צרו קשר</p>
-              <a
-                href="mailto:writer@example.com"
-                className="underline-grow text-parchment text-sm block mb-2 hover:opacity-90"
-                onMouseEnter={(e) => e.currentTarget.classList.add("is-on")}
-                onMouseLeave={(e) => e.currentTarget.classList.remove("is-on")}
-              >
-                writer@example.com
-              </a>
-              <p className="text-muted text-sm">050-000-0000</p>
-            </div>
-            <div>
               <p className="text-xs tracking-widest text-gold mb-4">עקבו</p>
               <div className="flex gap-4">
-                {["פמה חדשה"].map((s) => (
+                {["דמה חדשה"].map((s) => (
                   <a
                     key={s}
                     href="#"
@@ -576,6 +700,11 @@ export default function WriterLandingPage() {
                   </a>
                 ))}
               </div>
+            </div>
+
+            {/* Right: contact form */}
+            <div>
+              <ContactForm />
             </div>
           </div>
           <div className="border-t border-[rgba(201,166,70,0.2)] pt-6 flex flex-col md:flex-row justify-between gap-3">
