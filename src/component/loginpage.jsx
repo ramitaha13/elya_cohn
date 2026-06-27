@@ -1,32 +1,35 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { db } from "../firebase"; // התאם את הנתיב למיקום firebase.js שלך
+import { collection, query, where, getDocs } from "firebase/firestore";
 
 /**
  * דף כניסה (Login) — תואם לעיצוב של דף הנחיתה (Parchment / Ink / Gold)
  * ---------------------------------------------------------------
- * הערות שימוש:
- *  1. הקובץ הזה משתמש ב-react-router-dom (Link, useNavigate).
- *     אם הפרויקט שלך לא משתמש ב-react-router, יש להתקין אותו:
- *        npm install react-router-dom
- *     ולהוסיף route בקובץ ה-App שלך, לדוגמה (v6):
+ * ⚠️ אבטחה — קריאה חשובה:
+ * הדף הזה בודק התחברות ע"י שאילתה ישירה לקולקציית "users" ב-Firestore,
+ * משווה username + password כטקסט גלוי (plain text) כפי שנשמרים שם כיום.
  *
- *        import { BrowserRouter, Routes, Route } from "react-router-dom";
- *        import WriterLandingPage from "./WriterLandingPage";
- *        import LoginPage from "./LoginPage";
+ * כדי שזה יעבוד, חוקי האבטחה (Firestore Rules) של קולקציית "users" חייבים
+ * לאפשר קריאה (read/list) ללא התחברות מוקדמת, לדוגמה:
  *
- *        function App() {
- *          return (
- *            <BrowserRouter>
- *              <Routes>
- *                <Route path="/" element={<WriterLandingPage />} />
- *                <Route path="/login" element={<LoginPage />} />
- *              </Routes>
- *            </BrowserRouter>
- *          );
- *        }
+ *   match /databases/{database}/documents {
+ *     match /users/{userId} {
+ *       allow read: if true;   // נדרש כדי שהשאילתה תעבוד מהדפדפן
+ *       allow write: if false; // חוסם כתיבה חופשית
+ *     }
+ *   }
  *
- *  2. handleSubmit כרגע מדמה התחברות (setTimeout). יש לחבר קריאת API אמיתית
- *     לפי שירות האימות שלך (Firebase Auth, Supabase, JWT לבקאנד משלך וכו').
+ * המשמעות בפועל: כל מי שיודע לפתוח את כלי המפתחים בדפדפן (DevTools) ולשלוח
+ * שאילתת Firestore יכול לקרוא את כל קולקציית ה-users, כולל כל הסיסמאות
+ * בטקסט גלוי. זה מתאים לפרויקט אישי/דמו, אבל לא בטוח לסביבת פרודקשן עם
+ * משתמשים אמיתיים. החלופה הבטוחה היא Firebase Authentication, בה הסיסמאות
+ * לא נשמרות בקולקציה רגילה וגם לא נגישות לקריאה. שמרתי על השיטה הזו לפי
+ * בקשתך המפורשת.
+ *
+ * 1. הקובץ הזה משתמש ב-react-router-dom (Link, useNavigate).
+ *    אם הפרויקט שלך לא משתמש ב-react-router, יש להתקין אותו:
+ *       npm install react-router-dom
  */
 
 const BRAND = {
@@ -54,9 +57,10 @@ function Seal({ size = 72 }) {
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const [form, setForm] = useState({ email: "", password: "" });
+  const [form, setForm] = useState({ username: "", password: "" });
   const [status, setStatus] = useState("idle"); // idle | sending | error
   const [errorMsg, setErrorMsg] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -65,32 +69,47 @@ export default function LoginPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.email.trim() || !form.password.trim()) {
+    if (!form.username.trim() || !form.password.trim()) {
       setStatus("error");
-      setErrorMsg("נא למלא אימייל וסיסמה.");
+      setErrorMsg("נא למלא שם משתמש וסיסמה.");
       return;
     }
     setStatus("sending");
     setErrorMsg("");
 
-    // TODO: כאן יש לחבר התחברות אמיתית. לדוגמה:
-    // try {
-    //   const res = await fetch("https://your-api.example.com/login", {
-    //     method: "POST",
-    //     headers: { "Content-Type": "application/json" },
-    //     body: JSON.stringify(form),
-    //   });
-    //   if (!res.ok) throw new Error("פרטי התחברות שגויים");
-    //   navigate("/dashboard");
-    // } catch (err) {
-    //   setStatus("error");
-    //   setErrorMsg(err.message);
-    // }
+    try {
+      const usersRef = collection(db, "users");
+      const q = query(
+        usersRef,
+        where("username", "==", form.username.trim()),
+        where("password", "==", form.password),
+      );
+      const snapshot = await getDocs(q);
 
-    setTimeout(() => {
+      if (snapshot.empty) {
+        setStatus("error");
+        setErrorMsg("שם משתמש או סיסמה שגויים.");
+        return;
+      }
+
+      // התחברות הצליחה — שומרים פרטי המשתמש המחובר לשימוש מקומי באפליקציה
+      const userDoc = snapshot.docs[0];
+      const userData = { id: userDoc.id, ...userDoc.data() };
+      delete userData.password; // לא שומרים את הסיסמה עצמה ב-localStorage
+      localStorage.setItem("currentUser", JSON.stringify(userData));
+      // שומרים גם בנפרד את השם, לנוחות שימוש מהיר בדפים אחרים (למשל ברכת "שלום X" בדשבורד)
+      localStorage.setItem(
+        "userName",
+        userData.name || userData.username || "",
+      );
+
       setStatus("idle");
       navigate("/dashboard");
-    }, 700);
+    } catch (err) {
+      console.error("שגיאה בהתחברות:", err);
+      setStatus("error");
+      setErrorMsg("אירעה שגיאה בהתחברות. נסו שוב.");
+    }
   };
 
   return (
@@ -186,6 +205,30 @@ export default function LoginPage() {
           background:rgba(201,166,70,0.05);
         }
 
+        .password-wrap{
+          position:relative;
+        }
+        .password-wrap .form-input{
+          padding-left:42px; /* משאיר מקום לכפתור העין מהצד השמאלי, גם ב-RTL */
+        }
+        .toggle-password{
+          position:absolute;
+          top:0;
+          left:0;
+          height:100%;
+          width:40px;
+          display:flex;
+          align-items:center;
+          justify-content:center;
+          background:none;
+          border:none;
+          color:var(--muted);
+          cursor:pointer;
+          padding:0;
+          transition:color .2s ease;
+        }
+        .toggle-password:hover{ color:var(--gold-soft); }
+
         .btn-fill{
           background:var(--gold);
           color:var(--ink);
@@ -224,18 +267,18 @@ export default function LoginPage() {
         <div className="login-panel">
           <form onSubmit={handleSubmit} noValidate>
             <div className="form-row">
-              <label htmlFor="lg-email" className="form-label">
-                אימייל
+              <label htmlFor="lg-username" className="form-label">
+                שם משתמש
               </label>
               <input
-                id="lg-email"
-                name="email"
-                type="email"
-                value={form.email}
+                id="lg-username"
+                name="username"
+                type="text"
+                value={form.username}
                 onChange={handleChange}
                 className="form-input"
-                placeholder="example@mail.com"
-                autoComplete="email"
+                placeholder="שם המשתמש שלך"
+                autoComplete="username"
               />
             </div>
 
@@ -243,16 +286,54 @@ export default function LoginPage() {
               <label htmlFor="lg-password" className="form-label">
                 סיסמה
               </label>
-              <input
-                id="lg-password"
-                name="password"
-                type="password"
-                value={form.password}
-                onChange={handleChange}
-                className="form-input"
-                placeholder="••••••••"
-                autoComplete="current-password"
-              />
+              <div className="password-wrap">
+                <input
+                  id="lg-password"
+                  name="password"
+                  type={showPassword ? "text" : "password"}
+                  value={form.password}
+                  onChange={handleChange}
+                  className="form-input"
+                  placeholder="••••••••"
+                  autoComplete="current-password"
+                />
+                <button
+                  type="button"
+                  className="toggle-password"
+                  onClick={() => setShowPassword((v) => !v)}
+                  aria-label={showPassword ? "הסתר סיסמה" : "הצג סיסמה"}
+                  tabIndex={-1}
+                >
+                  {showPassword ? (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                      <path
+                        d="M3 3l18 18M10.58 10.58a2 2 0 002.83 2.83M9.88 4.6A10.94 10.94 0 0112 4.5c5 0 9 3.5 10.5 7.5-.6 1.6-1.5 3.05-2.65 4.27M6.1 6.1C3.9 7.5 2.2 9.6 1.5 12c1.1 3.1 3.6 5.7 7 6.9a10.9 10.9 0 003.5.6"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  ) : (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                      <path
+                        d="M1.5 12C3 8 7 4.5 12 4.5S21 8 22.5 12C21 16 17 19.5 12 19.5S3 16 1.5 12z"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                      <circle
+                        cx="12"
+                        cy="12"
+                        r="3"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                      />
+                    </svg>
+                  )}
+                </button>
+              </div>
             </div>
 
             {status === "error" && (
@@ -273,13 +354,6 @@ export default function LoginPage() {
             <span className="flourish-diamond" />
             <span className="flourish-line" />
           </div>
-
-          <p className="text-center text-muted text-xs">
-            אין לך חשבון?{" "}
-            <Link to="/signup" className="text-gold-soft hover:underline">
-              הרשמה
-            </Link>
-          </p>
         </div>
 
         <div className="text-center mt-8">

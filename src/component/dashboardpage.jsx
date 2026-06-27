@@ -25,6 +25,16 @@ import {
  *  - "works"   — קולקשן יצירות (כל יצירה = דוקומנט)
  *  - "messages"— קולקשן הודעות מהאתר (נכתב על-ידי טופס יצירת הקשר)
  *  - "profile/main" — דוקומנט יחיד עם פרטי הפרופיל
+ *
+ * הגנת כניסה (client-side):
+ *  - בעת טעינת הדף נבדק אם קיים "userName" ב-localStorage (נשמר ב-LoginPage
+ *    לאחר התחברות מוצלחת). אם הוא חסר — מי שניגש לדף הזה לא התחבר, ומועברים
+ *    אוטומטית ל-"/login".
+ *  - בלחיצה על "התנתקות" נמחקים מ-localStorage גם "userName" וגם
+ *    "currentUser", ואז מתבצע ניווט לדף הבית.
+ *  ⚠️ זו הגנה בצד הלקוח בלבד (קל לעקוף ע"י מי שמתעסק ב-DevTools). היא טובה
+ *  כדי לשלוט בחוויית המשתמש (לא לתת לראות את הדשבורד בלי "להתחבר"), אבל לא
+ *  מחליפה הרשאות אמיתיות בצד השרת/ב-Firestore Rules.
  */
 
 const BRAND = {
@@ -217,12 +227,6 @@ function WorksTab({
   };
 
   const startEdit = (w) => {
-    // === DEBUG: בדיקה זמנית — פותחים את ה-Console (F12) ולוחצים "עריכה" ===
-    // אם content מופיע כ-undefined / "" כאן — הבעיה היא בדאטה ב-Firestore,
-    // לא בקוד. אם הוא מכיל טקסט אבל לא מוצג בטופס — שלחו לי מה רואים כאן.
-    console.log("startEdit -> work object:", w);
-    console.log("startEdit -> content value:", w.content);
-
     setViewingId(null);
     setEditingId(w.id);
     setEditDraft({
@@ -629,6 +633,7 @@ function ProfileTab({ profile, loading, onSave }) {
 export default function DashboardPage() {
   const navigate = useNavigate();
   const [tab, setTab] = useState("overview");
+  const [checkingAuth, setCheckingAuth] = useState(true);
 
   const [works, setWorks] = useState([]);
   const [messages, setMessages] = useState([]);
@@ -640,8 +645,20 @@ export default function DashboardPage() {
     profile: true,
   });
 
+  // --- הגנת כניסה: אם אין userName ב-localStorage, מי שניגש לדף הזה לא ---
+  // --- התחבר (או שהתנתק) → מועברים אוטומטית לדף ההתחברות, ולא נטען הדשבורד ---
+  useEffect(() => {
+    const userName = localStorage.getItem("userName");
+    if (!userName) {
+      navigate("/login", { replace: true });
+      return;
+    }
+    setCheckingAuth(false);
+  }, [navigate]);
+
   // --- האזנה בזמן אמת ליצירות (works) ---
   useEffect(() => {
+    if (checkingAuth) return; // לא טוענים דאטה לפני שאישרנו שיש משתמש מחובר
     const q = query(collection(db, "works"), orderBy("createdAt", "desc"));
     const unsubscribe = onSnapshot(
       q,
@@ -667,10 +684,11 @@ export default function DashboardPage() {
       },
     );
     return () => unsubscribe();
-  }, []);
+  }, [checkingAuth]);
 
   // --- האזנה בזמן אמת להודעות (messages) ---
   useEffect(() => {
+    if (checkingAuth) return;
     const q = query(collection(db, "messages"), orderBy("createdAt", "desc"));
     const unsubscribe = onSnapshot(
       q,
@@ -695,10 +713,11 @@ export default function DashboardPage() {
       },
     );
     return () => unsubscribe();
-  }, []);
+  }, [checkingAuth]);
 
   // --- טעינת פרופיל חד-פעמית ---
   useEffect(() => {
+    if (checkingAuth) return;
     (async () => {
       try {
         const snap = await getDoc(doc(db, "profile", "main"));
@@ -715,7 +734,7 @@ export default function DashboardPage() {
         setLoading((prev) => ({ ...prev, profile: false }));
       }
     })();
-  }, []);
+  }, [checkingAuth]);
 
   // --- פעולות יצירות ---
   const handleAddWork = async (workData) => {
@@ -751,10 +770,18 @@ export default function DashboardPage() {
     setProfile(newProfile);
   };
 
+  // --- התנתקות: מנקה את כל פרטי המשתמש מ-localStorage ומחזירה לדף הבית ---
   const handleLogout = () => {
-    // TODO: לנקות טוקן/סשן אמיתי כאן (localStorage / cookie / context)
+    localStorage.removeItem("userName");
+    localStorage.removeItem("currentUser");
     navigate("/");
   };
+
+  // כל עוד לא אישרנו שיש משתמש מחובר, לא מציגים את הדשבורד בכלל
+  // (מונע "הבזק" של תוכן הדשבורד לפני ההפניה לדף ההתחברות)
+  if (checkingAuth) {
+    return null;
+  }
 
   return (
     <div dir="rtl" lang="he" className="dash-root">
