@@ -278,45 +278,43 @@ function WorksTab({
 
       {adding && (
         <form onSubmit={addWork} className="add-work-form">
-          <input
-            className="form-input"
-            placeholder="כותרת"
-            value={draft.title}
-            onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))}
-          />
-          <select
-            className="form-input"
-            value={draft.category}
-            onChange={(e) =>
-              setDraft((d) => ({ ...d, category: e.target.value }))
-            }
-          >
-            <option>שיר</option>
-            <option>סיפור</option>
-            <option>מילים לשיר</option>
-            <option>מחזה</option>
-          </select>
-          <input
-            className="form-input"
-            placeholder="שנה"
-            value={draft.year}
-            onChange={(e) => setDraft((d) => ({ ...d, year: e.target.value }))}
-          />
-          <input
-            className="form-input"
+          <div className="work-form-row">
+            <input
+              className="form-input"
+              placeholder="כותרת"
+              value={draft.title}
+              onChange={(e) =>
+                setDraft((d) => ({ ...d, title: e.target.value }))
+              }
+            />
+            <select
+              className="form-input"
+              value={draft.category}
+              onChange={(e) =>
+                setDraft((d) => ({ ...d, category: e.target.value }))
+              }
+            >
+              <option>שיר</option>
+              <option>סיפור</option>
+              <option>מילים לשיר</option>
+              <option>מחזה</option>
+            </select>
+            <input
+              className="form-input"
+              placeholder="שנה"
+              value={draft.year}
+              onChange={(e) =>
+                setDraft((d) => ({ ...d, year: e.target.value }))
+              }
+            />
+          </div>
+          <textarea
+            className="form-input form-textarea excerpt-input"
             placeholder="תקציר (אופציונלי, יוצג בדף הנחיתה)"
+            rows={3}
             value={draft.excerpt}
             onChange={(e) =>
               setDraft((d) => ({ ...d, excerpt: e.target.value }))
-            }
-          />
-          <textarea
-            className="form-input form-textarea work-content-input"
-            placeholder="תוכן היצירה המלא (השיר/הסיפור עצמו)"
-            rows={6}
-            value={draft.content}
-            onChange={(e) =>
-              setDraft((d) => ({ ...d, content: e.target.value }))
             }
           />
           <label className="featured-check">
@@ -329,6 +327,15 @@ function WorksTab({
             />
             יצירה נבחרת (תוצג בדף הנחיתה)
           </label>
+          <textarea
+            className="form-input form-textarea work-content-input"
+            placeholder="תוכן היצירה המלא (השיר/הסיפור עצמו)"
+            rows={10}
+            value={draft.content}
+            onChange={(e) =>
+              setDraft((d) => ({ ...d, content: e.target.value }))
+            }
+          />
           <button
             type="submit"
             className="btn-fill px-5 py-2 text-xs"
@@ -350,49 +357,46 @@ function WorksTab({
             if (isEditing) {
               return (
                 <form key={w.id} onSubmit={saveEdit} className="edit-work-form">
-                  <input
-                    className="form-input"
-                    placeholder="כותרת"
-                    value={editDraft.title}
-                    onChange={(e) =>
-                      setEditDraft((d) => ({ ...d, title: e.target.value }))
-                    }
-                  />
-                  <select
-                    className="form-input"
-                    value={editDraft.category}
-                    onChange={(e) =>
-                      setEditDraft((d) => ({ ...d, category: e.target.value }))
-                    }
-                  >
-                    <option>שיר</option>
-                    <option>סיפור</option>
-                    <option>מילים לשיר</option>
-                    <option>מחזה</option>
-                  </select>
-                  <input
-                    className="form-input"
-                    placeholder="שנה"
-                    value={editDraft.year}
-                    onChange={(e) =>
-                      setEditDraft((d) => ({ ...d, year: e.target.value }))
-                    }
-                  />
-                  <input
-                    className="form-input"
+                  <div className="work-form-row">
+                    <input
+                      className="form-input"
+                      placeholder="כותרת"
+                      value={editDraft.title}
+                      onChange={(e) =>
+                        setEditDraft((d) => ({ ...d, title: e.target.value }))
+                      }
+                    />
+                    <select
+                      className="form-input"
+                      value={editDraft.category}
+                      onChange={(e) =>
+                        setEditDraft((d) => ({
+                          ...d,
+                          category: e.target.value,
+                        }))
+                      }
+                    >
+                      <option>שיר</option>
+                      <option>סיפור</option>
+                      <option>מילים לשיר</option>
+                      <option>מחזה</option>
+                    </select>
+                    <input
+                      className="form-input"
+                      placeholder="שנה"
+                      value={editDraft.year}
+                      onChange={(e) =>
+                        setEditDraft((d) => ({ ...d, year: e.target.value }))
+                      }
+                    />
+                  </div>
+                  <textarea
+                    className="form-input form-textarea excerpt-input"
                     placeholder="תקציר (אופציונלי, יוצג בדף הנחיתה)"
+                    rows={3}
                     value={editDraft.excerpt}
                     onChange={(e) =>
                       setEditDraft((d) => ({ ...d, excerpt: e.target.value }))
-                    }
-                  />
-                  <textarea
-                    className="form-input form-textarea work-content-input"
-                    placeholder="תוכן היצירה המלא (השיר/הסיפור עצמו)"
-                    rows={6}
-                    value={editDraft.content}
-                    onChange={(e) =>
-                      setEditDraft((d) => ({ ...d, content: e.target.value }))
                     }
                   />
                   <label className="featured-check">
@@ -408,6 +412,15 @@ function WorksTab({
                     />
                     יצירה נבחרת (תוצג בדף הנחיתה)
                   </label>
+                  <textarea
+                    className="form-input form-textarea work-content-input"
+                    placeholder="תוכן היצירה המלא (השיר/הסיפור עצמו)"
+                    rows={10}
+                    value={editDraft.content}
+                    onChange={(e) =>
+                      setEditDraft((d) => ({ ...d, content: e.target.value }))
+                    }
+                  />
                   <div className="edit-actions">
                     <button
                       type="submit"
@@ -493,9 +506,13 @@ function MessagesTab({ messages, loading, onMarkRead, onDelete }) {
       console.error("שגיאה בעדכון הודעה:", err);
     }
   };
-  const deleteMessage = async (id) => {
+  const deleteMessage = async (m) => {
+    const confirmed = window.confirm(
+      `למחוק את ההודעה מ-"${m.name}"?\nלא ניתן לשחזר את ההודעה לאחר המחיקה.`,
+    );
+    if (!confirmed) return;
     try {
-      await onDelete(id);
+      await onDelete(m.id);
     } catch (err) {
       console.error("שגיאה במחיקת הודעה:", err);
       alert("מחיקת ההודעה נכשלה, נסו שוב.");
@@ -532,7 +549,7 @@ function MessagesTab({ messages, loading, onMarkRead, onDelete }) {
                 </a>
                 <button
                   className="link-btn link-btn-danger"
-                  onClick={() => deleteMessage(m.id)}
+                  onClick={() => deleteMessage(m)}
                 >
                   מחיקה
                 </button>
@@ -931,13 +948,21 @@ export default function DashboardPage() {
         /* Works tab */
         .add-work-form{
           display:flex;
-          flex-wrap:wrap;
-          gap:10px;
+          flex-direction:column;
+          gap:12px;
           background:var(--parchment-2);
           padding:16px;
           margin-bottom:18px;
+          width:100%;
+          box-sizing:border-box;
         }
-        .add-work-form .form-input{ flex:1; min-width:140px; }
+        .work-form-row{
+          display:flex;
+          flex-wrap:wrap;
+          gap:10px;
+          width:100%;
+        }
+        .work-form-row .form-input{ flex:1; min-width:140px; }
         .form-input{
           background:#fff;
           border:1px solid rgba(0,0,0,0.12);
@@ -945,6 +970,7 @@ export default function DashboardPage() {
           padding:10px 12px;
           font-family:'Heebo', sans-serif;
           font-size:13px;
+          box-sizing:border-box;
         }
         .form-input:focus{ outline:none; border-color:var(--gold); }
         .form-textarea{ resize:vertical; }
@@ -985,7 +1011,7 @@ export default function DashboardPage() {
           gap:8px;
           font-size:12px;
           color:var(--muted-2);
-          flex-basis:100%;
+          width:100%;
         }
         .featured-pill{
           font-size:10px;
@@ -995,21 +1021,27 @@ export default function DashboardPage() {
           padding:2px 8px;
           flex-shrink:0;
         }
-        .work-content-input{ flex-basis:100%; }
+        .work-content-input,
+        .excerpt-input{
+          width:100%;
+          box-sizing:border-box;
+          display:block;
+        }
         .edit-work-form{
           display:flex;
-          flex-wrap:wrap;
-          gap:10px;
+          flex-direction:column;
+          gap:12px;
           background:rgba(201,166,70,0.06);
           padding:16px;
           border-bottom:1px solid rgba(0,0,0,0.08);
+          width:100%;
+          box-sizing:border-box;
         }
-        .edit-work-form .form-input{ flex:1; min-width:140px; }
         .edit-actions{
           display:flex;
           align-items:center;
           gap:16px;
-          flex-basis:100%;
+          width:100%;
         }
 
         /* Messages tab */
