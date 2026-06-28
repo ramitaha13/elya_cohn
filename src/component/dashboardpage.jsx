@@ -12,8 +12,6 @@ import {
   onSnapshot,
   orderBy,
   query,
-  where,
-  Timestamp,
   serverTimestamp,
 } from "firebase/firestore";
 
@@ -96,7 +94,7 @@ function StatCard({ label, value, hint }) {
   );
 }
 
-function OverviewTab({ works, messages, loading, visitsCount, onGoTo }) {
+function OverviewTab({ works, messages, loading, onGoTo }) {
   const unread = messages.filter((m) => !m.read).length;
   return (
     <div>
@@ -115,11 +113,6 @@ function OverviewTab({ works, messages, loading, visitsCount, onGoTo }) {
                 ? "הכול נקרא"
                 : null
           }
-        />
-        <StatCard
-          label="ביקורים בשבוע האחרון"
-          value={loading.visits ? "…" : visitsCount}
-          hint="נספר אוטומטית מהאתר"
         />
       </div>
 
@@ -662,13 +655,11 @@ export default function DashboardPage() {
   const [works, setWorks] = useState([]);
   const [messages, setMessages] = useState([]);
   const [profile, setProfile] = useState(DEFAULT_PROFILE);
-  const [visitsCount, setVisitsCount] = useState(0);
 
   const [loading, setLoading] = useState({
     works: true,
     messages: true,
     profile: true,
-    visits: true,
   });
 
   // --- הגנת כניסה: אם אין userName ב-localStorage, מי שניגש לדף הזה לא ---
@@ -736,31 +727,6 @@ export default function DashboardPage() {
       (err) => {
         console.error("שגיאה בטעינת הודעות:", err);
         setLoading((prev) => ({ ...prev, messages: false }));
-      },
-    );
-    return () => unsubscribe();
-  }, [checkingAuth]);
-
-  // --- האזנה בזמן אמת לביקורים בשבוע האחרון (visits) ---
-  // כל טעינה של דף הבית (WriterLandingPage) רושמת דוקומנט בקולקשן "visits".
-  // כאן סופרים כמה דוקומנטים כאלה נוצרו ב-7 הימים האחרונים.
-  useEffect(() => {
-    if (checkingAuth) return;
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    const q = query(
-      collection(db, "visits"),
-      where("createdAt", ">=", Timestamp.fromDate(sevenDaysAgo)),
-    );
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
-        setVisitsCount(snapshot.size);
-        setLoading((prev) => ({ ...prev, visits: false }));
-      },
-      (err) => {
-        console.error("שגיאה בטעינת ביקורים:", err);
-        setLoading((prev) => ({ ...prev, visits: false }));
       },
     );
     return () => unsubscribe();
@@ -1145,7 +1111,6 @@ export default function DashboardPage() {
             works={works}
             messages={messages}
             loading={loading}
-            visitsCount={visitsCount}
             onGoTo={setTab}
           />
         )}
