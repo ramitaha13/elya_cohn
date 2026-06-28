@@ -32,6 +32,11 @@ import {
  *     בנתיב "/works" (ולא גולל לחלק היצירות באותו עמוד).
  *  6. התאמת מובייל: תפריט המבורגר נפתח בלחיצה במסכים צרים, ושורות
  *     היצירות עוברות לפריסה אנכית (כותרת מעל קטגוריה/שנה) במקום להיחתך.
+ *  7. כל טעינה של הדף הזה (ביקור באתר) נרשמת ל-Firestore בקולקשן "visits",
+ *     כדי שבדשבורד (סקירה) אפשר להציג כמה ביקורים היו בשבוע האחרון.
+ *     הרישום מתבצע לכל היותר פעם אחת לכל מחשב/דפדפן בכל חלון של 7 ימים
+ *     (נשמר ב-localStorage), כדי שאותו אדם שנכנס כמה פעמים באותו שבוע
+ *     יספור כביקור אחד בלבד.
  */
 
 const DEFAULT_WRITER = {
@@ -279,6 +284,33 @@ export default function WriterLandingPage() {
       },
     );
     return () => unsubscribe();
+  }, []);
+
+  // רושם ביקור באתר בקולקשן "visits" ב-Firestore — אבל רק פעם אחת לכל מחשב/
+  // דפדפן בכל חלון של 7 ימים (ולא פעם אחת לכל סשן). כך אדם שנכנס כמה פעמים
+  // באותו שבוע (גם בסשנים/טאבים שונים) נספר כביקור אחד בלבד, וייספר שוב רק
+  // אם יחזור לאחר שעברו 7 ימים מהביקור הקודם שנרשם. ההבחנה היא לפי המחשב/
+  // דפדפן הספציפי (localStorage), לא לפי זהות אמיתית של המשתמש.
+  useEffect(() => {
+    const STORAGE_KEY = "lastVisitLoggedAt";
+    const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+    try {
+      const lastLogged = localStorage.getItem(STORAGE_KEY);
+      const now = Date.now();
+      if (lastLogged && now - Number(lastLogged) < WEEK_MS) {
+        return; // כבר נספר ביקור מהמחשב הזה בשבוע האחרון
+      }
+      localStorage.setItem(STORAGE_KEY, String(now));
+      addDoc(collection(db, "visits"), {
+        createdAt: serverTimestamp(),
+        path: window.location.pathname,
+      }).catch((err) => {
+        console.error("שגיאה ברישום ביקור:", err);
+      });
+    } catch (err) {
+      // localStorage עלול להיות חסום (למשל במצב פרטי) — לא קריטי, פשוט לא נרשם הביקור
+      console.error("שגיאה ברישום ביקור:", err);
+    }
   }, []);
 
   // מאחד את נתוני הפרופיל מ-Firestore עם הדפולטים. role / excerpt / initials
