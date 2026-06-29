@@ -19,10 +19,11 @@ import {
 /**
  * דף נחיתה ליוצר/ת - שירה, סיפורת ויצירה רב-תחומית
  * -------------------------------------------------
- *  1. DEFAULT_WRITER הוא תוכן דמו/פולבק — name / tagline / bio נטענים בפועל
- *     מ-Firestore (דוקומנט "profile/main") ומחליפים אותו אוטומטית בזמן אמת.
- *     role, excerpt ו-initials אינם חלק מה-Profile בדשבורד ונשארים סטטיים
- *     כאן (אפשר להוסיף אותם לדשבורד בהמשך אם תרצה שגם הם יתעדכנו).
+ *  1. DEFAULT_WRITER הוא תוכן דמו/פולבק — name / tagline / bio / role / excerpt
+ *     נטענים בפועל מ-Firestore (דוקומנט "profile/main") ומחליפים אותו
+ *     אוטומטית בזמן אמת. גם כותרת סקשן "אודות" (aboutTitle) ורשימת
+ *     "תחומי היצירה" (disciplines) נטענות מה-Profile ומוחלפות אוטומטית.
+ *     initials נשאר סטטי כאן.
  *  2. את תמונת היוצר/ת — חפשו את ההערה "TODO: תמונה" והחליפו את ה-placeholder ב-<img src="..." />
  *  3. רשימת היצירות נטענת מ-Firestore (קולקשן "works") ומסוננת להציג רק
  *     יצירות שסומנו "נבחרת" (featured: true) בדשבורד. FALLBACK_WORKS מוצג
@@ -46,6 +47,9 @@ const DEFAULT_WRITER = {
     "בכל פרויקט אילייה שם דגש על איכות, אמינות ומקצועיות, תוך הקפדה על תהליך עבודה מסודר ושיתוף פעולה מלא עם לקוחותיו. היצירתיות, האחריות והמחויבות שלו למצוינות מאפשרות לו ליצור עבודות מקוריות ומרשימות, המשקפות את החזון של כל פרויקט בצורה המדויקת והטובה ביותר.",
   ],
 };
+
+// כותרת סקשן "אודות" — דפולט, מוחלף ע"י profile.aboutTitle אם קיים
+const DEFAULT_ABOUT_TITLE = "כתיבה כמרחב בין שיר לסיפור";
 
 const DISCIPLINES = [
   { he: "שירה", sub: "Poetry" },
@@ -281,19 +285,35 @@ export default function WriterLandingPage() {
     return () => unsubscribe();
   }, []);
 
-  // מאחד את נתוני הפרופיל מ-Firestore עם הדפולטים. role / excerpt / initials
-  // אינם נשמרים כרגע בדשבורד ונשארים תמיד מהדפולט.
+  // מאחד את נתוני הפרופיל מ-Firestore עם הדפולטים.
+  // name / tagline / role / excerpt / bio נטענים כולם מה-Profile אם קיימים.
   const writer = {
     ...DEFAULT_WRITER,
     name: profile?.name?.trim() ? profile.name : DEFAULT_WRITER.name,
     tagline: profile?.tagline?.trim()
       ? profile.tagline
       : DEFAULT_WRITER.tagline,
+    role: profile?.role?.trim() ? profile.role : DEFAULT_WRITER.role,
+    excerpt: profile?.excerpt?.trim()
+      ? profile.excerpt
+      : DEFAULT_WRITER.excerpt,
     bio:
       profile?.bio && profile.bio.trim()
         ? profile.bio.split(/\n+/).filter(Boolean)
         : DEFAULT_WRITER.bio,
   };
+
+  // כותרת סקשן "אודות" — מגיעה מה-Profile (aboutTitle) אם הוגדרה, אחרת דפולט
+  const aboutTitle = profile?.aboutTitle?.trim()
+    ? profile.aboutTitle
+    : DEFAULT_ABOUT_TITLE;
+
+  // רשימת תחומי היצירה — מגיעה מה-Profile (disciplines) אם הוגדרה ולא ריקה,
+  // אחרת מוצגת רשימת הדפולט הסטטית
+  const disciplines =
+    profile?.disciplines && profile.disciplines.length > 0
+      ? profile.disciplines
+      : DISCIPLINES;
 
   // טוען את היצירות בזמן אמת מ-Firestore ומסנן להציג רק יצירות שסומנו
   // "נבחרת" (featured: true) בדשבורד. הסינון נעשה בצד הלקוח כדי לא לדרוש
@@ -744,7 +764,7 @@ export default function WriterLandingPage() {
             <div className="md:col-span-4 flex flex-col items-center md:items-start text-center md:text-right">
               <p className="text-xs tracking-widest text-wine mb-3">אודות</p>
               <h2 className="font-display text-3xl sm:text-4xl leading-tight mb-8">
-                כתיבה כמרחב בין שיר לסיפור
+                {aboutTitle}
               </h2>
               <div className="about-photo-frame">
                 <img
@@ -788,9 +808,9 @@ export default function WriterLandingPage() {
             </h2>
           </div>
           <div className="flex flex-wrap justify-center gap-3 sm:gap-4">
-            {DISCIPLINES.map((d) => (
+            {disciplines.map((d, i) => (
               <div
-                key={d.he}
+                key={d.he || i}
                 className="chip px-5 sm:px-6 py-4 text-center min-w-[140px] sm:min-w-[150px]"
               >
                 <p className="font-display text-lg text-parchment">{d.he}</p>
