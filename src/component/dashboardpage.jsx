@@ -145,12 +145,13 @@ function WorksTab({
   onRemove,
   onUpdate,
   onToggleFeatured,
+  disciplines,
 }) {
   const [adding, setAdding] = useState(false);
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState({
     title: "",
-    category: "שיר",
+    category: disciplines?.[0]?.he || "",
     year: "",
     excerpt: "",
     content: "",
@@ -160,6 +161,17 @@ function WorksTab({
   const [editDraft, setEditDraft] = useState(null);
   const [updating, setUpdating] = useState(false);
   const [viewingId, setViewingId] = useState(null);
+
+  // אם רשימת התחומים משתנה (נוסף/הוסר תחום בפרופיל) ועדכון הקטגוריה הנבחרת
+  // בטופס "הוספה" כבר לא קיימת ברשימה, נעדכן לערך הראשון הזמין.
+  useEffect(() => {
+    if (
+      disciplines?.length &&
+      !disciplines.some((d) => d.he === draft.category)
+    ) {
+      setDraft((d) => ({ ...d, category: disciplines[0].he }));
+    }
+  }, [disciplines]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleRemove = async (work) => {
     const confirmed = window.confirm(
@@ -196,7 +208,7 @@ function WorksTab({
       });
       setDraft({
         title: "",
-        category: "שיר",
+        category: disciplines?.[0]?.he || "",
         year: "",
         excerpt: "",
         content: "",
@@ -215,7 +227,7 @@ function WorksTab({
     setEditingId(w.id);
     setEditDraft({
       title: w.title || "",
-      category: w.category || "שיר",
+      category: w.category || disciplines?.[0]?.he || "",
       year: w.year || "",
       excerpt: w.excerpt || "",
       content: w.content || "",
@@ -276,10 +288,11 @@ function WorksTab({
                 setDraft((d) => ({ ...d, category: e.target.value }))
               }
             >
-              <option>שיר</option>
-              <option>סיפור</option>
-              <option>מילים לשיר</option>
-              <option>מחזה</option>
+              {disciplines.map((d, i) => (
+                <option key={i} value={d.he}>
+                  {d.he}
+                </option>
+              ))}
             </select>
             <input
               className="form-input"
@@ -357,10 +370,11 @@ function WorksTab({
                         }))
                       }
                     >
-                      <option>שיר</option>
-                      <option>סיפור</option>
-                      <option>מילים לשיר</option>
-                      <option>מחזה</option>
+                      {disciplines.map((d, i) => (
+                        <option key={i} value={d.he}>
+                          {d.he}
+                        </option>
+                      ))}
                     </select>
                     <input
                       className="form-input"
@@ -747,7 +761,8 @@ function ProfileTab({ profile, loading, onSave }) {
           <div className="profile-section-body">
             <p className="section-desc">
               תחומי היצירה שמופיעים בסקשן "תחומי יצירה" בדף הנחיתה. הסדר כאן הוא
-              הסדר שיוצג באתר.
+              הסדר שיוצג באתר, וגם רשימת הקטגוריות שמוצעת בעת הוספת/עריכת יצירה
+              בטאב "יצירות", וכן בדף "יצירות" הציבורי.
             </p>
             <DisciplineEditor
               disciplines={draft.disciplines || DEFAULT_DISCIPLINES}
@@ -1080,6 +1095,11 @@ export default function DashboardPage() {
             onRemove={handleRemoveWork}
             onUpdate={handleUpdateWork}
             onToggleFeatured={handleToggleFeatured}
+            disciplines={
+              profile.disciplines && profile.disciplines.length
+                ? profile.disciplines
+                : DEFAULT_DISCIPLINES
+            }
           />
         )}
         {tab === "messages" && (

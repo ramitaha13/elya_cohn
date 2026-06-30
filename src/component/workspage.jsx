@@ -1,7 +1,14 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { db } from "../firebase"; // התאם את הנתיב למיקום firebase.js שלך
-import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  getDoc,
+  onSnapshot,
+  orderBy,
+  query,
+} from "firebase/firestore";
 
 /**
  * דף ציבורי המציג את כל היצירות לקוראים.
@@ -9,7 +16,10 @@ import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
  * הוסיפו route בקובץ ה-App שלכם:
  *    <Route path="/works" element={<WorksPage />} />
  *
- * הדף שואב את כל המסמכים מקולקשן "works" ב-Firestore בזמן אמת.
+ * הדף שואב את כל המסמכים מקולקשן "works" ב-Firestore בזמן אמת,
+ * וכן את רשימת "תחומי היצירה" ממסמך profile/main כדי לבנות את
+ * כפתורי הסינון לפי קטגוריה (אותה רשימה שמוגדרת בדשבורד תחת
+ * "פרופיל" → "תחומי יצירה").
  * לחיצה על יצירה ברשימה פותחת את התוכן המלא שלה באותו דף.
  */
 
@@ -43,6 +53,7 @@ export default function WorksPage() {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null); // היצירה שנפתחה לקריאה
   const [category, setCategory] = useState("הכול");
+  const [disciplines, setDisciplines] = useState([]);
 
   useEffect(() => {
     const q = query(collection(db, "works"), orderBy("createdAt", "desc"));
@@ -72,10 +83,23 @@ export default function WorksPage() {
     return () => unsubscribe();
   }, []);
 
-  // רשימה קבועה — תואמת לאפשרויות שב-select בדשבורד, מוצגת תמיד
-  // (לא תלויה בכך שכבר קיימת יצירה מאותה קטגוריה)
-  const FIXED_CATEGORIES = ["שיר", "סיפור", "מילים לשיר", "מחזה"];
-  const categories = ["הכול", ...FIXED_CATEGORIES];
+  // טעינת תחומי היצירה מהפרופיל — אותה רשימה שמנוהלת בדשבורד
+  // תחת "פרופיל" → "תחומי יצירה", כך שכפתורי הסינון כאן תמיד מסונכרנים.
+  useEffect(() => {
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, "profile", "main"));
+        if (snap.exists()) {
+          setDisciplines(snap.data().disciplines || []);
+        }
+      } catch (err) {
+        console.error("שגיאה בטעינת תחומי יצירה:", err);
+      }
+    })();
+  }, []);
+
+  // הקטגוריות לסינון נשאבות מתחומי היצירה שהוגדרו בפרופיל
+  const categories = ["הכול", ...disciplines.map((d) => d.he).filter(Boolean)];
 
   const filteredWorks =
     category === "הכול" ? works : works.filter((w) => w.category === category);
