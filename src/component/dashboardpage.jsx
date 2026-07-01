@@ -46,6 +46,32 @@ const NAV_ITEMS = [
   { id: "profile", label: "פרופיל" },
 ];
 
+// ── Cloudinary image upload ──
+// אם ה-upload preset "rami123" מוגבל לוידאו בלבד ב-Cloudinary, יש ליצור
+// preset נפרד (unsigned) לתמונות ולעדכן את השם כאן.
+const CLOUDINARY_CLOUD_NAME = "drrpopjnm";
+const CLOUDINARY_IMAGE_PRESET = "rami123";
+
+async function uploadImageToCloudinary(file) {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("upload_preset", CLOUDINARY_IMAGE_PRESET);
+
+  const response = await fetch(
+    `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`,
+    {
+      method: "POST",
+      body: formData,
+    },
+  );
+
+  const data = await response.json();
+  if (!data.secure_url) {
+    throw new Error("Image upload failed");
+  }
+  return data.secure_url;
+}
+
 function formatDate(ts) {
   if (!ts) return "—";
   const d = typeof ts.toDate === "function" ? ts.toDate() : new Date(ts);
@@ -156,9 +182,17 @@ function WorksTab({
     excerpt: "",
     content: "",
     featured: false,
+    imageUrl: "",
   });
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+
   const [editingId, setEditingId] = useState(null);
   const [editDraft, setEditDraft] = useState(null);
+  const [editImageFile, setEditImageFile] = useState(null);
+  const [editImagePreview, setEditImagePreview] = useState(null);
+  const [editUploadingImage, setEditUploadingImage] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [viewingId, setViewingId] = useState(null);
 
@@ -172,6 +206,38 @@ function WorksTab({
       setDraft((d) => ({ ...d, category: disciplines[0].he }));
     }
   }, [disciplines]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleImageSelect = (e) => {
+    const selected = e.target.files[0];
+    if (selected && selected.type.startsWith("image/")) {
+      setImageFile(selected);
+      setImagePreview(URL.createObjectURL(selected));
+    }
+  };
+
+  const clearImage = () => {
+    setImageFile(null);
+    if (imagePreview) URL.revokeObjectURL(imagePreview);
+    setImagePreview(null);
+    setDraft((d) => ({ ...d, imageUrl: "" }));
+  };
+
+  const handleEditImageSelect = (e) => {
+    const selected = e.target.files[0];
+    if (selected && selected.type.startsWith("image/")) {
+      setEditImageFile(selected);
+      setEditImagePreview(URL.createObjectURL(selected));
+    }
+  };
+
+  const clearEditImage = () => {
+    setEditImageFile(null);
+    if (editImagePreview && editImagePreview.startsWith("blob:")) {
+      URL.revokeObjectURL(editImagePreview);
+    }
+    setEditImagePreview(null);
+    setEditDraft((d) => ({ ...d, imageUrl: "" }));
+  };
 
   const handleRemove = async (work) => {
     const confirmed = window.confirm(
@@ -198,6 +264,12 @@ function WorksTab({
     if (!draft.title.trim()) return;
     setSaving(true);
     try {
+      let imageUrl = draft.imageUrl || "";
+      if (imageFile) {
+        setUploadingImage(true);
+        imageUrl = await uploadImageToCloudinary(imageFile);
+        setUploadingImage(false);
+      }
       await onAdd({
         title: draft.title,
         category: draft.category,
@@ -205,6 +277,7 @@ function WorksTab({
         excerpt: draft.excerpt,
         content: draft.content,
         featured: draft.featured,
+        imageUrl,
       });
       setDraft({
         title: "",
@@ -213,12 +286,17 @@ function WorksTab({
         excerpt: "",
         content: "",
         featured: false,
+        imageUrl: "",
       });
+      if (imagePreview) URL.revokeObjectURL(imagePreview);
+      setImageFile(null);
+      setImagePreview(null);
       setAdding(false);
     } catch {
       alert("הוספת היצירה נכשלה, נסו שוב.");
     } finally {
       setSaving(false);
+      setUploadingImage(false);
     }
   };
 
@@ -232,12 +310,20 @@ function WorksTab({
       excerpt: w.excerpt || "",
       content: w.content || "",
       featured: !!w.featured,
+      imageUrl: w.imageUrl || "",
     });
+    setEditImageFile(null);
+    setEditImagePreview(w.imageUrl || null);
   };
 
   const cancelEdit = () => {
+    if (editImagePreview && editImagePreview.startsWith("blob:")) {
+      URL.revokeObjectURL(editImagePreview);
+    }
     setEditingId(null);
     setEditDraft(null);
+    setEditImageFile(null);
+    setEditImagePreview(null);
   };
 
   const saveEdit = async (e) => {
@@ -245,13 +331,25 @@ function WorksTab({
     if (!editDraft.title.trim()) return;
     setUpdating(true);
     try {
-      await onUpdate(editingId, editDraft);
+      let imageUrl = editDraft.imageUrl || "";
+      if (editImageFile) {
+        setEditUploadingImage(true);
+        imageUrl = await uploadImageToCloudinary(editImageFile);
+        setEditUploadingImage(false);
+      }
+      await onUpdate(editingId, { ...editDraft, imageUrl });
+      if (editImagePreview && editImagePreview.startsWith("blob:")) {
+        URL.revokeObjectURL(editImagePreview);
+      }
       setEditingId(null);
       setEditDraft(null);
+      setEditImageFile(null);
+      setEditImagePreview(null);
     } catch {
       alert("עדכון היצירה נכשל, נסו שוב.");
     } finally {
       setUpdating(false);
+      setEditUploadingImage(false);
     }
   };
 
@@ -303,6 +401,32 @@ function WorksTab({
               }
             />
           </div>
+
+          <div className="image-upload-row">
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleImageSelect}
+              id="workImageInput"
+              className="hidden-file-input"
+            />
+            <label htmlFor="workImageInput" className="link-btn">
+              {imagePreview ? "החלף תמונה" : "+ הוסף תמונה"}
+            </label>
+            {imagePreview && (
+              <div className="image-preview-wrap">
+                <img src={imagePreview} alt="" className="image-preview" />
+                <button
+                  type="button"
+                  className="link-btn link-btn-danger"
+                  onClick={clearImage}
+                >
+                  הסר
+                </button>
+              </div>
+            )}
+          </div>
+
           <textarea
             className="form-input form-textarea excerpt-input"
             placeholder="תקציר (אופציונלי)"
@@ -336,7 +460,7 @@ function WorksTab({
             className="btn-fill px-5 py-2 text-xs"
             disabled={saving}
           >
-            {saving ? "שומר..." : "שמירה"}
+            {uploadingImage ? "מעלה תמונה..." : saving ? "שומר..." : "שמירה"}
           </button>
         </form>
       )}
@@ -385,6 +509,39 @@ function WorksTab({
                       }
                     />
                   </div>
+
+                  <div className="image-upload-row">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleEditImageSelect}
+                      id={`workImageInputEdit-${w.id}`}
+                      className="hidden-file-input"
+                    />
+                    <label
+                      htmlFor={`workImageInputEdit-${w.id}`}
+                      className="link-btn"
+                    >
+                      {editImagePreview ? "החלף תמונה" : "+ הוסף תמונה"}
+                    </label>
+                    {editImagePreview && (
+                      <div className="image-preview-wrap">
+                        <img
+                          src={editImagePreview}
+                          alt=""
+                          className="image-preview"
+                        />
+                        <button
+                          type="button"
+                          className="link-btn link-btn-danger"
+                          onClick={clearEditImage}
+                        >
+                          הסר
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
                   <textarea
                     className="form-input form-textarea excerpt-input"
                     placeholder="תקציר"
@@ -422,7 +579,11 @@ function WorksTab({
                       className="btn-fill px-5 py-2 text-xs"
                       disabled={updating}
                     >
-                      {updating ? "מעדכן..." : "שמירת שינויים"}
+                      {editUploadingImage
+                        ? "מעלה תמונה..."
+                        : updating
+                          ? "מעדכן..."
+                          : "שמירת שינויים"}
                     </button>
                     <button
                       type="button"
@@ -438,6 +599,9 @@ function WorksTab({
             return (
               <div key={w.id} className="work-row-block">
                 <div className="work-row">
+                  {w.imageUrl && (
+                    <img src={w.imageUrl} alt="" className="work-row-thumb" />
+                  )}
                   <button
                     className="work-title font-display work-title-btn"
                     onClick={() => setViewingId(isViewing ? null : w.id)}
@@ -469,6 +633,15 @@ function WorksTab({
                 </div>
                 {isViewing && (
                   <div className="work-content-view">
+                    {w.imageUrl && (
+                      <div className="work-image-wrap">
+                        <img
+                          src={w.imageUrl}
+                          alt={w.title}
+                          className="work-image-display"
+                        />
+                      </div>
+                    )}
                     {w.content ? (
                       <p>{w.content}</p>
                     ) : (
@@ -826,6 +999,7 @@ export default function DashboardPage() {
             excerpt: v.excerpt || "",
             content: v.content || "",
             featured: !!v.featured,
+            imageUrl: v.imageUrl || "",
           };
         });
         setWorks(data);
@@ -978,10 +1152,13 @@ export default function DashboardPage() {
         .work-table{ border-top:1px solid rgba(0,0,0,0.08); }
         .work-row-block{ border-bottom:1px solid rgba(0,0,0,0.08); }
         .work-row{ display:flex; align-items:center; gap:16px; padding:14px 4px; }
+        .work-row-thumb{ width:56px; height:56px; object-fit:cover; flex-shrink:0; border:1px solid rgba(0,0,0,0.08); }
         .work-title{ font-size:16px; flex-shrink:0; }
         .work-title-btn{ background:none; border:none; padding:0; cursor:pointer; text-align:right; color:var(--ink); transition:color .2s; }
         .work-title-btn:hover{ color:var(--wine); }
         .work-content-view{ background:var(--parchment-2); padding:14px 16px 18px; margin:0 4px 14px; font-size:14px; line-height:1.8; color:var(--muted-2); white-space:pre-wrap; }
+        .work-image-wrap{ width:100%; max-width:360px; max-height:240px; display:flex; align-items:center; justify-content:center; background:var(--parchment); margin-bottom:14px; border:1px solid rgba(0,0,0,0.08); overflow:hidden; }
+        .work-image-display{ max-width:100%; max-height:240px; width:auto; height:auto; object-fit:contain; display:block; }
         .work-meta{ color:var(--muted); font-size:12px; flex:1; }
         .work-actions{ display:flex; gap:14px; flex-shrink:0; }
         .featured-check{ display:flex; align-items:center; gap:8px; font-size:12px; color:var(--muted-2); width:100%; }
@@ -989,6 +1166,11 @@ export default function DashboardPage() {
         .work-content-input, .excerpt-input{ width:100%; box-sizing:border-box; display:block; }
         .edit-work-form{ display:flex; flex-direction:column; gap:12px; background:rgba(201,166,70,0.06); padding:16px; border-bottom:1px solid rgba(0,0,0,0.08); width:100%; box-sizing:border-box; }
         .edit-actions{ display:flex; align-items:center; gap:16px; width:100%; }
+
+        .hidden-file-input{ display:none; }
+        .image-upload-row{ display:flex; flex-direction:column; gap:10px; }
+        .image-preview-wrap{ display:flex; align-items:center; gap:12px; }
+        .image-preview{ width:110px; height:80px; object-fit:contain; background:var(--parchment); border:1px solid rgba(0,0,0,0.1); }
 
         .msg-list{ display:flex; flex-direction:column; gap:14px; }
         .msg-card{ background:#fff; border:1px solid rgba(0,0,0,0.08); border-right:3px solid transparent; padding:18px 20px; }

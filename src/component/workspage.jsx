@@ -4,7 +4,6 @@ import { db } from "../firebase"; // התאם את הנתיב למיקום fireb
 import {
   collection,
   doc,
-  getDoc,
   onSnapshot,
   orderBy,
   query,
@@ -70,6 +69,7 @@ export default function WorksPage() {
             excerpt: v.excerpt || "",
             content: v.content || "",
             featured: !!v.featured,
+            imageUrl: v.imageUrl || "",
           };
         });
         setWorks(data);
@@ -85,17 +85,21 @@ export default function WorksPage() {
 
   // טעינת תחומי היצירה מהפרופיל — אותה רשימה שמנוהלת בדשבורד
   // תחת "פרופיל" → "תחומי יצירה", כך שכפתורי הסינון כאן תמיד מסונכרנים.
+  // שימוש ב-onSnapshot (במקום getDoc חד-פעמי) כדי להציג נתונים מה-cache
+  // המקומי כמעט מיידית, ולא להמתין לתשובה מהשרת.
   useEffect(() => {
-    (async () => {
-      try {
-        const snap = await getDoc(doc(db, "profile", "main"));
+    const unsubscribe = onSnapshot(
+      doc(db, "profile", "main"),
+      (snap) => {
         if (snap.exists()) {
           setDisciplines(snap.data().disciplines || []);
         }
-      } catch (err) {
+      },
+      (err) => {
         console.error("שגיאה בטעינת תחומי יצירה:", err);
-      }
-    })();
+      },
+    );
+    return () => unsubscribe();
   }, []);
 
   // הקטגוריות לסינון נשאבות מתחומי היצירה שהוגדרו בפרופיל
@@ -210,7 +214,7 @@ export default function WorksPage() {
         .works-list{ display:flex; flex-direction:column; }
         .work-item{
           display:flex;
-          align-items:baseline;
+          align-items:center;
           gap:18px;
           padding:22px 4px;
           border-bottom:1px solid rgba(0,0,0,0.08);
@@ -227,6 +231,13 @@ export default function WorksPage() {
           padding-right:14px;
         }
         .work-item:hover .work-item-title{ color:var(--wine); }
+        .work-item-thumb{
+          width:46px;
+          height:46px;
+          object-fit:cover;
+          flex-shrink:0;
+          border:1px solid rgba(0,0,0,0.08);
+        }
         .work-item-title{
           font-size:20px;
           color:var(--ink);
@@ -295,6 +306,27 @@ export default function WorksPage() {
           line-height:1.25;
         }
 
+        .detail-image-wrap{
+          width:100%;
+          max-width:420px;
+          max-height:300px;
+          display:flex;
+          align-items:center;
+          justify-content:center;
+          background:var(--parchment-2);
+          margin-bottom:28px;
+          border:1px solid rgba(0,0,0,0.08);
+          overflow:hidden;
+        }
+        .detail-image{
+          max-width:100%;
+          max-height:300px;
+          width:auto;
+          height:auto;
+          object-fit:contain;
+          display:block;
+        }
+
         .detail-divider{
           width:64px;
           height:2px;
@@ -339,6 +371,15 @@ export default function WorksPage() {
               <span className="detail-year">{selected.year}</span>
             </div>
             <h1 className="detail-title font-display">{selected.title}</h1>
+            {selected.imageUrl && (
+              <div className="detail-image-wrap">
+                <img
+                  src={selected.imageUrl}
+                  alt={selected.title}
+                  className="detail-image"
+                />
+              </div>
+            )}
             <div className="detail-divider" />
             {selected.content ? (
               <p className="detail-content">{selected.content}</p>
@@ -383,6 +424,13 @@ export default function WorksPage() {
                     className="work-item"
                     onClick={() => openWork(w)}
                   >
+                    {w.imageUrl && (
+                      <img
+                        src={w.imageUrl}
+                        alt=""
+                        className="work-item-thumb"
+                      />
+                    )}
                     <span className="work-item-title font-display">
                       {w.title}
                     </span>
