@@ -72,6 +72,53 @@ async function uploadImageToCloudinary(file) {
   return data.secure_url;
 }
 
+// הופך URL-ים בתוך טקסט חופשי לקישורים לחיצים שנפתחים בטאב חדש
+function linkifyText(text) {
+  if (!text) return null;
+  const urlRegex = /(https?:\/\/[^\s]+|www\.[^\s]+)/gi;
+  const nodes = [];
+  let lastIndex = 0;
+  let match;
+  let key = 0;
+
+  while ((match = urlRegex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      nodes.push(text.slice(lastIndex, match.index));
+    }
+
+    let url = match[0];
+    // מסירים סימני פיסוק שנדבקו בסוף הקישור בטעות (נקודה, פסיק, סוגריים וכו')
+    let trailing = "";
+    const trailingMatch = url.match(/[).,;:!?]+$/);
+    if (trailingMatch) {
+      trailing = trailingMatch[0];
+      url = url.slice(0, url.length - trailing.length);
+    }
+
+    const href = url.startsWith("www.") ? `https://${url}` : url;
+    nodes.push(
+      <a
+        key={key++}
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="content-link"
+      >
+        {url}
+      </a>,
+    );
+    if (trailing) nodes.push(trailing);
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < text.length) {
+    nodes.push(text.slice(lastIndex));
+  }
+
+  return nodes;
+}
+
 function formatDate(ts) {
   if (!ts) return "—";
   const d = typeof ts.toDate === "function" ? ts.toDate() : new Date(ts);
@@ -643,7 +690,7 @@ function WorksTab({
                       </div>
                     )}
                     {w.content ? (
-                      <p>{w.content}</p>
+                      <p>{linkifyText(w.content)}</p>
                     ) : (
                       <p className="text-muted">
                         אין תוכן עדיין. לחצו "עריכה".
@@ -1157,6 +1204,8 @@ export default function DashboardPage() {
         .work-title-btn{ background:none; border:none; padding:0; cursor:pointer; text-align:right; color:var(--ink); transition:color .2s; }
         .work-title-btn:hover{ color:var(--wine); }
         .work-content-view{ background:var(--parchment-2); padding:14px 16px 18px; margin:0 4px 14px; font-size:14px; line-height:1.8; color:var(--muted-2); white-space:pre-wrap; }
+        .content-link{ color:var(--wine); text-decoration:underline; word-break:break-all; }
+        .content-link:hover{ color:var(--gold); }
         .work-image-wrap{ width:100%; max-width:360px; max-height:240px; display:flex; align-items:center; justify-content:center; background:var(--parchment); margin-bottom:14px; border:1px solid rgba(0,0,0,0.08); overflow:hidden; }
         .work-image-display{ max-width:100%; max-height:240px; width:auto; height:auto; object-fit:contain; display:block; }
         .work-meta{ color:var(--muted); font-size:12px; flex:1; }

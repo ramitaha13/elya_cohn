@@ -1,43 +1,85 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { db } from "../firebase"; // התאם את הנתיב למיקום firebase.js שלך
+import { Link } from "react-router-dom";
+import { db } from "../firebase";
 import {
   collection,
   doc,
+  getDoc,
   onSnapshot,
   orderBy,
   query,
 } from "firebase/firestore";
-
-/**
- * דף ציבורי המציג את כל היצירות לקוראים.
- * ---------------------------------------------------------------
- * הוסיפו route בקובץ ה-App שלכם:
- *    <Route path="/works" element={<WorksPage />} />
- *
- * הדף שואב את כל המסמכים מקולקשן "works" ב-Firestore בזמן אמת,
- * וכן את רשימת "תחומי היצירה" ממסמך profile/main כדי לבנות את
- * כפתורי הסינון לפי קטגוריה (אותה רשימה שמוגדרת בדשבורד תחת
- * "פרופיל" → "תחומי יצירה").
- * לחיצה על יצירה ברשימה פותחת את התוכן המלא שלה באותו דף.
- */
 
 const BRAND = {
   name: "אילייה כהן",
   initials: "א.כ",
 };
 
-function Seal({ size = 56 }) {
+const DEFAULT_DISCIPLINES = [
+  { he: "שירה", sub: "Poetry" },
+  { he: "סיפורת קצרה", sub: "Short fiction" },
+  { he: "מילים לשירים", sub: "Lyrics" },
+  { he: "כתיבת מחזות", sub: "Playwriting" },
+  { he: "סדנאות כתיבה", sub: "Workshops" },
+];
+
+// הופך URL-ים בתוך טקסט חופשי לקישורים לחיצים שנפתחים בטאב חדש
+function linkifyText(text) {
+  if (!text) return null;
+  const urlRegex = /(https?:\/\/[^\s]+|www\.[^\s]+)/gi;
+  const nodes = [];
+  let lastIndex = 0;
+  let match;
+  let key = 0;
+
+  while ((match = urlRegex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      nodes.push(text.slice(lastIndex, match.index));
+    }
+
+    let url = match[0];
+    let trailing = "";
+    const trailingMatch = url.match(/[).,;:!?]+$/);
+    if (trailingMatch) {
+      trailing = trailingMatch[0];
+      url = url.slice(0, url.length - trailing.length);
+    }
+
+    const href = url.startsWith("www.") ? `https://${url}` : url;
+    nodes.push(
+      <a
+        key={key++}
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="pw-content-link"
+      >
+        {url}
+      </a>,
+    );
+    if (trailing) nodes.push(trailing);
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < text.length) {
+    nodes.push(text.slice(lastIndex));
+  }
+
+  return nodes;
+}
+
+function Seal({ size = 40 }) {
   return (
     <div
-      className="seal"
+      className="pw-seal"
       style={{ width: size, height: size }}
       aria-hidden="true"
     >
       <svg viewBox="0 0 100 100" width="100%" height="100%">
-        <circle cx="50" cy="50" r="47" className="seal-ring-outer" />
-        <circle cx="50" cy="50" r="40" className="seal-ring-inner" />
-        <text x="50" y="58" textAnchor="middle" className="seal-text">
+        <circle cx="50" cy="50" r="47" className="pw-seal-ring-outer" />
+        <circle cx="50" cy="50" r="40" className="pw-seal-ring-inner" />
+        <text x="50" y="58" textAnchor="middle" className="pw-seal-text">
           {BRAND.initials}
         </text>
       </svg>
@@ -46,13 +88,12 @@ function Seal({ size = 56 }) {
 }
 
 export default function WorksPage() {
-  const navigate = useNavigate();
-
   const [works, setWorks] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [selected, setSelected] = useState(null); // היצירה שנפתחה לקריאה
-  const [category, setCategory] = useState("הכול");
-  const [disciplines, setDisciplines] = useState([]);
+  const [loadingWorks, setLoadingWorks] = useState(true);
+  const [profileName, setProfileName] = useState(BRAND.name);
+  const [disciplines, setDisciplines] = useState(DEFAULT_DISCIPLINES);
+  const [activeFilter, setActiveFilter] = useState("all");
+  const [openId, setOpenId] = useState(null);
 
   useEffect(() => {
     const q = query(collection(db, "works"), orderBy("createdAt", "desc"));
@@ -64,7 +105,7 @@ export default function WorksPage() {
           return {
             id: d.id,
             title: v.title || "",
-            category: v.category || "שיר",
+            category: v.category || "",
             year: v.year || "—",
             excerpt: v.excerpt || "",
             content: v.content || "",
@@ -73,379 +114,271 @@ export default function WorksPage() {
           };
         });
         setWorks(data);
-        setLoading(false);
+        setLoadingWorks(false);
       },
-      (err) => {
-        console.error("שגיאה בטעינת יצירות:", err);
-        setLoading(false);
-      },
+      () => setLoadingWorks(false),
     );
     return () => unsubscribe();
   }, []);
 
-  // טעינת תחומי היצירה מהפרופיל — אותה רשימה שמנוהלת בדשבורד
-  // תחת "פרופיל" → "תחומי יצירה", כך שכפתורי הסינון כאן תמיד מסונכרנים.
-  // שימוש ב-onSnapshot (במקום getDoc חד-פעמי) כדי להציג נתונים מה-cache
-  // המקומי כמעט מיידית, ולא להמתין לתשובה מהשרת.
   useEffect(() => {
-    const unsubscribe = onSnapshot(
-      doc(db, "profile", "main"),
-      (snap) => {
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, "profile", "main"));
         if (snap.exists()) {
-          setDisciplines(snap.data().disciplines || []);
+          const data = snap.data();
+          if (data.name) setProfileName(data.name);
+          if (data.disciplines && data.disciplines.length) {
+            setDisciplines(data.disciplines);
+          }
         }
-      },
-      (err) => {
-        console.error("שגיאה בטעינת תחומי יצירה:", err);
-      },
-    );
-    return () => unsubscribe();
+      } catch (err) {
+        console.error("שגיאה בטעינת פרופיל:", err);
+      }
+    })();
   }, []);
-
-  // הקטגוריות לסינון נשאבות מתחומי היצירה שהוגדרו בפרופיל
-  const categories = ["הכול", ...disciplines.map((d) => d.he).filter(Boolean)];
 
   const filteredWorks =
-    category === "הכול" ? works : works.filter((w) => w.category === category);
+    activeFilter === "all"
+      ? works
+      : works.filter((w) => w.category === activeFilter);
 
-  const openWork = (w) => {
-    setSelected(w);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  const closeWork = () => {
-    setSelected(null);
-  };
+  const openWork = works.find((w) => w.id === openId) || null;
+  const openWorkParagraphs = openWork
+    ? (openWork.content || "").split(/\n\s*\n/).filter(Boolean)
+    : [];
 
   return (
-    <div dir="rtl" lang="he" className="works-root">
+    <div dir="rtl" lang="he" className="pw-root">
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@300;400;500;700;900&family=Heebo:wght@300;400;500;600;700&display=swap');
 
         :root{
-          --ink:#16231F;
-          --ink-2:#1F2F29;
-          --parchment:#F4EDDD;
-          --parchment-2:#ECE2CB;
-          --gold:#C9A646;
-          --gold-soft:#E2C879;
-          --wine:#7A2E3A;
-          --muted:#9C9484;
-          --muted-2:#5C6760;
+          --ink:#16231F; --ink-2:#1F2F29; --ink-3:#26392F;
+          --parchment:#F4EDDD; --parchment-2:#ECE2CB;
+          --gold:#C9A646; --gold-soft:#E2C879;
+          --wine:#7A2E3A; --muted:#9C9484; --muted-2:#5C6760;
         }
+        .pw-root{ background:var(--parchment); color:var(--ink); font-family:'Heebo', sans-serif; min-height:100vh; }
+        .pw-font-display{ font-family:'Frank Ruhl Libre', serif; }
+        .pw-text-muted{ color:var(--muted); }
 
-        .works-root{
-          background:var(--parchment);
-          color:var(--ink);
-          font-family:'Heebo', sans-serif;
-          min-height:100vh;
-        }
-        .font-display{ font-family:'Frank Ruhl Libre', serif; }
-        .text-muted{ color:var(--muted); }
+        .pw-topbar{ background:var(--ink); color:var(--parchment); display:flex; align-items:center; justify-content:space-between; padding:16px 28px; border-bottom:1px solid rgba(201,166,70,0.25); }
+        .pw-back-btn{ display:inline-block; border:1px solid rgba(201,166,70,0.4); color:var(--gold-soft); background:transparent; padding:10px 18px; font-size:12px; text-decoration:none; transition:background-color .25s, color .25s; }
+        .pw-back-btn:hover{ background:var(--gold); color:var(--ink); }
 
-        /* Topbar */
-        .works-topbar{
-          background:var(--ink);
-          color:var(--parchment);
-          display:flex;
-          align-items:center;
-          justify-content:space-between;
-          padding:16px 28px;
-          border-bottom:1px solid rgba(201,166,70,0.25);
-        }
-        .works-brand{ display:flex; align-items:center; gap:14px; cursor:pointer; }
-        .works-brand-name{ font-size:15px; }
-        .works-brand-sub{ font-size:11px; color:var(--muted); }
-        .seal-ring-outer{ fill:none; stroke:var(--gold); stroke-width:1.4; }
-        .seal-ring-inner{ fill:none; stroke:var(--gold); stroke-width:0.7; opacity:0.7; }
-        .seal-text{ font-family:'Frank Ruhl Libre', serif; font-size:20px; fill:var(--gold-soft); }
+        .pw-brand{ display:flex; align-items:center; gap:14px; }
+        .pw-brand-text{ text-align:right; }
+        .pw-brand-name{ font-size:15px; }
+        .pw-brand-sub{ font-size:11px; color:var(--muted); }
+        .pw-seal-ring-outer{ fill:none; stroke:var(--gold); stroke-width:1.4; }
+        .pw-seal-ring-inner{ fill:none; stroke:var(--gold); stroke-width:0.7; opacity:0.7; }
+        .pw-seal-text{ font-family:'Frank Ruhl Libre', serif; font-size:20px; fill:var(--gold-soft); }
 
-        .home-link{
-          border:1px solid rgba(201,166,70,0.4);
-          color:var(--gold-soft);
-          background:transparent;
-          padding:8px 16px;
-          font-size:12px;
-          cursor:pointer;
-          transition:background-color .25s ease, color .25s ease;
-        }
-        .home-link:hover{ background:var(--gold); color:var(--ink); }
+        .pw-main{ max-width:1100px; margin:0 auto; padding:56px 28px 80px; }
+        .pw-hero-title{ font-size:44px; margin:0 0 14px; }
+        .pw-hero-sub{ font-size:14px; color:var(--muted-2); margin:0 0 34px; }
 
-        .works-main{
-          max-width:880px;
-          margin:0 auto;
-          padding:48px 28px 80px;
-        }
+        .pw-filters{ display:flex; flex-wrap:wrap; gap:10px; margin-bottom:40px; }
+        .pw-filter-pill{ padding:10px 20px; font-size:13px; background:transparent; border:1px solid rgba(0,0,0,0.15); color:var(--ink-2); cursor:pointer; transition:background-color .2s, color .2s, border-color .2s; white-space:nowrap; }
+        .pw-filter-pill:hover{ border-color:var(--wine); }
+        .pw-filter-pill.is-active{ background:var(--wine); border-color:var(--wine); color:#fff; }
 
-        .page-title{
-          font-size:34px;
-          margin-bottom:8px;
-        }
-        .page-sub{
-          font-size:14px;
-          color:var(--muted-2);
-          margin-bottom:36px;
-        }
+        .pw-list{ border-top:1px solid rgba(0,0,0,0.1); }
+        .pw-row{ border-bottom:1px solid rgba(0,0,0,0.1); }
+        .pw-row-head{ display:flex; align-items:center; gap:18px; padding:20px 4px; cursor:pointer; background:none; border:none; width:100%; box-sizing:border-box; text-align:right; font-family:'Heebo', sans-serif; }
+        .pw-row-head:hover .pw-row-title{ color:var(--wine); }
+        .pw-row-title{ font-size:21px; flex-shrink:0; transition:color .2s; }
+        .pw-row-meta{ font-size:13px; color:var(--muted); flex:1; }
+        .pw-featured-pill{ font-size:10px; letter-spacing:.04em; color:var(--wine); border:1px solid rgba(122,46,58,0.3); padding:2px 8px; flex-shrink:0; }
+        .pw-arrow-icon{ color:var(--gold); flex-shrink:0; transition:transform .2s ease; }
+        .pw-row-head:hover .pw-arrow-icon{ transform:translateX(-4px); }
 
-        /* Filters */
-        .cat-filters{
-          display:flex;
-          flex-wrap:wrap;
-          gap:8px;
-          margin-bottom:32px;
-        }
-        .cat-pill{
-          padding:7px 16px;
-          font-size:12px;
-          background:transparent;
-          border:1px solid rgba(122,46,58,0.3);
-          color:var(--muted-2);
-          cursor:pointer;
-          transition:all .2s ease;
-        }
-        .cat-pill:hover{ border-color:var(--wine); color:var(--wine); }
-        .cat-pill.is-active{
-          background:var(--wine);
-          border-color:var(--wine);
-          color:#fff;
-        }
+        .pw-empty-state{ text-align:center; padding:60px 0; color:var(--muted); font-size:14px; }
 
-        /* List */
-        .works-list{ display:flex; flex-direction:column; }
-        .work-item{
-          display:flex;
-          align-items:center;
-          gap:18px;
-          padding:22px 4px;
-          border-bottom:1px solid rgba(0,0,0,0.08);
-          background:none;
-          border-right:none;
-          border-left:none;
-          border-top:none;
-          width:100%;
-          text-align:right;
-          cursor:pointer;
-          transition:padding-right .2s ease;
-        }
-        .work-item:hover{
-          padding-right:14px;
-        }
-        .work-item:hover .work-item-title{ color:var(--wine); }
-        .work-item-thumb{
-          width:46px;
-          height:46px;
-          object-fit:cover;
-          flex-shrink:0;
-          border:1px solid rgba(0,0,0,0.08);
-        }
-        .work-item-title{
-          font-size:20px;
-          color:var(--ink);
-          transition:color .2s ease;
-          flex-shrink:0;
-        }
-        .work-item-meta{
-          font-size:12px;
-          color:var(--muted);
-          flex-shrink:0;
-        }
-        .work-item-excerpt{
-          font-size:13px;
-          color:var(--muted-2);
-          flex:1;
-          overflow:hidden;
-          text-overflow:ellipsis;
-          white-space:nowrap;
-        }
-        .work-item-arrow{
-          color:var(--gold);
-          font-size:16px;
-          flex-shrink:0;
-        }
+        /* ── תצוגת יצירה בודדת (מחליפה את הרשימה, ללא ניווט) ── */
+        .pw-single-back{ display:block; text-align:right; color:var(--wine); font-size:14px; text-decoration:none; background:none; border:none; cursor:pointer; padding:0; margin-bottom:40px; font-family:'Heebo', sans-serif; }
+        .pw-single-back:hover{ text-decoration:underline; }
 
-        .empty-state{
-          text-align:center;
-          color:var(--muted);
-          padding:60px 0;
-          font-size:14px;
-        }
+        .pw-single-meta-row{ display:flex; align-items:center; justify-content:flex-start; gap:12px; margin-bottom:18px; }
+        .pw-single-year{ font-size:14px; color:var(--muted); }
+        .pw-single-category-pill{ font-size:12px; color:var(--ink-2); border:1px solid rgba(0,0,0,0.15); padding:6px 16px; }
 
-        /* Detail view */
-        .detail-back{
-          display:inline-flex;
-          align-items:center;
-          gap:6px;
-          background:none;
-          border:none;
-          color:var(--wine);
-          font-size:13px;
-          cursor:pointer;
-          margin-bottom:28px;
-          padding:0;
-        }
-        .detail-back:hover{ text-decoration:underline; }
+        .pw-single-title{ font-size:40px; text-align:right; line-height:1.3; margin:0 0 26px; }
 
-        .detail-meta{
-          display:flex;
-          gap:10px;
-          align-items:center;
-          margin-bottom:6px;
-        }
-        .detail-category{
-          font-size:11px;
-          letter-spacing:.04em;
-          color:var(--wine);
-          border:1px solid rgba(122,46,58,0.3);
-          padding:2px 10px;
-        }
-        .detail-year{ font-size:12px; color:var(--muted); }
+        .pw-single-divider{ width:150px; height:2px; background:var(--gold); margin:0 0 44px; }
 
-        .detail-title{
-          font-size:38px;
-          margin:10px 0 28px;
-          line-height:1.25;
-        }
+        .pw-single-image-wrap{ width:100%; max-width:520px; max-height:360px; display:flex; align-items:center; justify-content:center; background:var(--parchment-2); margin:0 0 40px; border:1px solid rgba(0,0,0,0.08); overflow:hidden; }
+        .pw-single-image{ max-width:100%; max-height:360px; width:auto; height:auto; object-fit:contain; display:block; }
 
-        .detail-image-wrap{
-          width:100%;
-          max-width:420px;
-          max-height:300px;
-          display:flex;
-          align-items:center;
-          justify-content:center;
-          background:var(--parchment-2);
-          margin-bottom:28px;
-          border:1px solid rgba(0,0,0,0.08);
-          overflow:hidden;
-        }
-        .detail-image{
-          max-width:100%;
-          max-height:300px;
-          width:auto;
-          height:auto;
-          object-fit:contain;
-          display:block;
-        }
+        .pw-single-excerpt{ font-size:17px; font-style:italic; color:var(--wine); text-align:right; margin:0 0 40px; line-height:1.9; }
 
-        .detail-divider{
-          width:64px;
-          height:2px;
-          background:var(--gold);
-          margin-bottom:32px;
-        }
+        .pw-single-content{ font-size:17px; line-height:2; color:var(--muted-2); text-align:right; max-width:900px; }
+        .pw-single-content p{ margin:0 0 32px; white-space:pre-wrap; }
+        .pw-content-link{ color:var(--wine); text-decoration:underline; word-break:break-all; }
+        .pw-content-link:hover{ color:var(--gold); }
+        .pw-single-empty{ text-align:right; color:var(--muted); font-size:14px; }
 
-        .detail-content{
-          font-size:17px;
-          line-height:2;
-          color:var(--ink-2);
-          white-space:pre-wrap;
-        }
-        .detail-content-empty{
-          font-size:14px;
-          color:var(--muted);
-          font-style:italic;
+        /* ── התאמה למסך טלפון ── */
+        @media (max-width: 640px){
+          .pw-topbar{ padding:12px 14px; gap:10px; }
+          .pw-back-btn{ padding:8px 12px; font-size:11px; }
+          .pw-brand{ gap:8px; }
+          .pw-brand-name{ font-size:13px; }
+          .pw-brand-sub{ font-size:10px; }
+
+          .pw-main{ padding:28px 16px 56px; }
+          .pw-hero-title{ font-size:28px; margin:0 0 10px; }
+          .pw-hero-sub{ font-size:12px; margin:0 0 22px; }
+
+          .pw-filters{ gap:8px; margin-bottom:26px; }
+          .pw-filter-pill{ padding:8px 14px; font-size:12px; }
+
+          .pw-row-head{ flex-wrap:wrap; gap:6px 12px; padding:16px 2px; }
+          .pw-row-title{ font-size:17px; width:100%; }
+          .pw-row-meta{ font-size:12px; flex:1 1 auto; }
+          .pw-featured-pill{ font-size:9px; padding:2px 6px; }
+          .pw-arrow-icon{ width:16px; height:16px; }
+
+          .pw-single-back{ font-size:13px; margin-bottom:26px; }
+          .pw-single-meta-row{ margin-bottom:14px; }
+          .pw-single-year{ font-size:12px; }
+          .pw-single-category-pill{ font-size:11px; padding:5px 12px; }
+          .pw-single-title{ font-size:24px; margin:0 0 18px; }
+          .pw-single-divider{ width:90px; margin:0 0 28px; }
+          .pw-single-image-wrap{ max-width:100%; max-height:220px; margin:0 0 26px; }
+          .pw-single-image{ max-height:220px; }
+          .pw-single-excerpt{ font-size:14px; margin:0 0 26px; }
+          .pw-single-content{ font-size:15px; line-height:1.85; }
+          .pw-single-content p{ margin:0 0 22px; }
         }
       `}</style>
 
-      <div className="works-topbar">
-        <div className="works-brand" onClick={() => navigate("/")}>
+      <div className="pw-topbar">
+        <div className="pw-brand">
           <Seal size={40} />
-          <div>
-            <p className="works-brand-name font-display">{BRAND.name}</p>
-            <p className="works-brand-sub">יצירות</p>
+          <div className="pw-brand-text">
+            <p className="pw-brand-name pw-font-display">{profileName}</p>
+            <p className="pw-brand-sub">יצירות</p>
           </div>
         </div>
-        <button className="home-link" onClick={() => navigate("/")}>
+        <Link to="/" className="pw-back-btn">
           חזרה לדף הבית
-        </button>
+        </Link>
       </div>
 
-      <main className="works-main">
-        {selected ? (
-          <div>
-            <button className="detail-back" onClick={closeWork}>
-              ← חזרה לרשימת היצירות
+      <main className="pw-main">
+        {openWork ? (
+          <>
+            <button className="pw-single-back" onClick={() => setOpenId(null)}>
+              חזרה לרשימת היצירות ←
             </button>
-            <div className="detail-meta">
-              <span className="detail-category">{selected.category}</span>
-              <span className="detail-year">{selected.year}</span>
+
+            <div className="pw-single-meta-row">
+              <span className="pw-single-category-pill">
+                {openWork.category}
+              </span>
+              <span className="pw-single-year">{openWork.year}</span>
             </div>
-            <h1 className="detail-title font-display">{selected.title}</h1>
-            {selected.imageUrl && (
-              <div className="detail-image-wrap">
+
+            <h1 className="pw-single-title pw-font-display">
+              {openWork.title}
+            </h1>
+            <div className="pw-single-divider" />
+
+            {openWork.imageUrl && (
+              <div className="pw-single-image-wrap">
                 <img
-                  src={selected.imageUrl}
-                  alt={selected.title}
-                  className="detail-image"
+                  src={openWork.imageUrl}
+                  alt={openWork.title}
+                  className="pw-single-image"
                 />
               </div>
             )}
-            <div className="detail-divider" />
-            {selected.content ? (
-              <p className="detail-content">{selected.content}</p>
-            ) : (
-              <p className="detail-content-empty">
-                התוכן המלא של היצירה יתעדכן בקרוב.
-              </p>
+
+            {openWork.excerpt && (
+              <p className="pw-single-excerpt">{openWork.excerpt}</p>
             )}
-          </div>
+
+            <div className="pw-single-content">
+              {openWorkParagraphs.length > 0 ? (
+                openWorkParagraphs.map((p, i) => (
+                  <p key={i}>{linkifyText(p)}</p>
+                ))
+              ) : (
+                <p className="pw-single-empty">אין עדיין תוכן ליצירה זו.</p>
+              )}
+            </div>
+          </>
         ) : (
-          <div>
-            <h1 className="page-title font-display">היצירות</h1>
-            <p className="page-sub">
-              {loading
-                ? "טוען יצירות..."
-                : `${works.length} יצירות · לחצו על יצירה כדי לקרוא אותה במלואה`}
+          <>
+            <h1 className="pw-hero-title pw-font-display">היצירות</h1>
+            <p className="pw-hero-sub">
+              {loadingWorks ? "טוען..." : filteredWorks.length} יצירות · לחצו על
+              יצירה כדי לקרוא אותה במלואה
             </p>
 
-            {!loading && categories.length > 1 && (
-              <div className="cat-filters">
-                {categories.map((c) => (
-                  <button
-                    key={c}
-                    className={`cat-pill ${category === c ? "is-active" : ""}`}
-                    onClick={() => setCategory(c)}
-                  >
-                    {c}
-                  </button>
-                ))}
-              </div>
-            )}
+            <div className="pw-filters">
+              <button
+                className={`pw-filter-pill ${activeFilter === "all" ? "is-active" : ""}`}
+                onClick={() => setActiveFilter("all")}
+              >
+                הכל
+              </button>
+              {disciplines.map((d, i) => (
+                <button
+                  key={i}
+                  className={`pw-filter-pill ${activeFilter === d.he ? "is-active" : ""}`}
+                  onClick={() => setActiveFilter(d.he)}
+                >
+                  {d.he}
+                </button>
+              ))}
+            </div>
 
-            {loading ? (
-              <p className="empty-state">טוען יצירות...</p>
+            {loadingWorks ? (
+              <p className="pw-empty-state">טוען יצירות...</p>
             ) : filteredWorks.length === 0 ? (
-              <p className="empty-state">אין עדיין יצירות להצגה.</p>
+              <p className="pw-empty-state">אין יצירות להצגה בקטגוריה זו.</p>
             ) : (
-              <div className="works-list">
+              <div className="pw-list">
                 {filteredWorks.map((w) => (
-                  <button
-                    key={w.id}
-                    className="work-item"
-                    onClick={() => openWork(w)}
-                  >
-                    {w.imageUrl && (
-                      <img
-                        src={w.imageUrl}
-                        alt=""
-                        className="work-item-thumb"
-                      />
-                    )}
-                    <span className="work-item-title font-display">
-                      {w.title}
-                    </span>
-                    <span className="work-item-meta">
-                      {w.category} · {w.year}
-                    </span>
-                    {w.excerpt && (
-                      <span className="work-item-excerpt">{w.excerpt}</span>
-                    )}
-                    <span className="work-item-arrow">←</span>
-                  </button>
+                  <div key={w.id} className="pw-row">
+                    <button
+                      className="pw-row-head"
+                      onClick={() => setOpenId(w.id)}
+                    >
+                      <span className="pw-row-title pw-font-display">
+                        {w.title}
+                      </span>
+                      <span className="pw-row-meta">
+                        {w.category} · {w.year}
+                      </span>
+                      {w.featured && (
+                        <span className="pw-featured-pill">נבחרת</span>
+                      )}
+                      <svg
+                        viewBox="0 0 24 24"
+                        width="20"
+                        height="20"
+                        className="pw-arrow-icon"
+                        aria-hidden="true"
+                      >
+                        <path
+                          d="M18 12H6M6 12L11 7M6 12L11 17"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          fill="none"
+                        />
+                      </svg>
+                    </button>
+                  </div>
                 ))}
               </div>
             )}
-          </div>
+          </>
         )}
       </main>
     </div>
