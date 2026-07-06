@@ -28,6 +28,12 @@ const DEFAULT_DISCIPLINES = [
   { he: "סדנאות כתיבה", sub: "Workshops" },
 ];
 
+// רשימת המחברים/שמות העט שיצירה יכולה להיות משויכת אליהם
+const AUTHORS = [
+  { id: "eliya", he: "אילייה כהן" },
+  { id: "tzitzi", he: "ציצי מקניל" },
+];
+
 const DEFAULT_PROFILE = {
   name: BRAND.name,
   tagline: "מילים שנעות בין שיר לסיפור לציור",
@@ -219,12 +225,14 @@ function WorksTab({
   onUpdate,
   onToggleFeatured,
   disciplines,
+  authors,
 }) {
   const [adding, setAdding] = useState(false);
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState({
     title: "",
     category: disciplines?.[0]?.he || "",
+    author: authors?.[0]?.he || "",
     year: "",
     excerpt: "",
     content: "",
@@ -253,6 +261,13 @@ function WorksTab({
       setDraft((d) => ({ ...d, category: disciplines[0].he }));
     }
   }, [disciplines]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // אותו דבר עבור רשימת המחברים
+  useEffect(() => {
+    if (authors?.length && !authors.some((a) => a.he === draft.author)) {
+      setDraft((d) => ({ ...d, author: authors[0].he }));
+    }
+  }, [authors]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleImageSelect = (e) => {
     const selected = e.target.files[0];
@@ -320,6 +335,7 @@ function WorksTab({
       await onAdd({
         title: draft.title,
         category: draft.category,
+        author: draft.author,
         year: draft.year || "—",
         excerpt: draft.excerpt,
         content: draft.content,
@@ -329,6 +345,7 @@ function WorksTab({
       setDraft({
         title: "",
         category: disciplines?.[0]?.he || "",
+        author: authors?.[0]?.he || "",
         year: "",
         excerpt: "",
         content: "",
@@ -353,6 +370,7 @@ function WorksTab({
     setEditDraft({
       title: w.title || "",
       category: w.category || disciplines?.[0]?.he || "",
+      author: w.author || authors?.[0]?.he || "",
       year: w.year || "",
       excerpt: w.excerpt || "",
       content: w.content || "",
@@ -436,6 +454,19 @@ function WorksTab({
               {disciplines.map((d, i) => (
                 <option key={i} value={d.he}>
                   {d.he}
+                </option>
+              ))}
+            </select>
+            <select
+              className="form-input"
+              value={draft.author}
+              onChange={(e) =>
+                setDraft((d) => ({ ...d, author: e.target.value }))
+              }
+            >
+              {authors.map((a) => (
+                <option key={a.id} value={a.he}>
+                  {a.he}
                 </option>
               ))}
             </select>
@@ -544,6 +575,22 @@ function WorksTab({
                       {disciplines.map((d, i) => (
                         <option key={i} value={d.he}>
                           {d.he}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      className="form-input"
+                      value={editDraft.author}
+                      onChange={(e) =>
+                        setEditDraft((d) => ({
+                          ...d,
+                          author: e.target.value,
+                        }))
+                      }
+                    >
+                      {authors.map((a) => (
+                        <option key={a.id} value={a.he}>
+                          {a.he}
                         </option>
                       ))}
                     </select>
@@ -658,6 +705,7 @@ function WorksTab({
                   </button>
                   <span className="work-meta">
                     {w.category} · {w.year}
+                    {w.author ? ` · ${w.author}` : ""}
                   </span>
                   {w.featured && <span className="featured-pill">נבחרת</span>}
                   <div className="work-actions">
@@ -1042,6 +1090,7 @@ export default function DashboardPage() {
             id: d.id,
             title: v.title || "",
             category: v.category || "שיר",
+            author: v.author || "",
             year: v.year || "—",
             excerpt: v.excerpt || "",
             content: v.content || "",
@@ -1331,6 +1380,7 @@ export default function DashboardPage() {
                 ? profile.disciplines
                 : DEFAULT_DISCIPLINES
             }
+            authors={AUTHORS}
           />
         )}
         {tab === "messages" && (

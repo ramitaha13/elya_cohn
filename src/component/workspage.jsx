@@ -15,6 +15,10 @@ const BRAND = {
   initials: "א.כ",
 };
 
+// שם העט השני. יצירות שאין להן שדה author (או ששוריות ל"אילייה כהן")
+// ייחשבו כמשויכות לאילייה, וכל השאר יוצגו תחת הכותרת של ציצי מקניל.
+const SECONDARY_AUTHOR = "ציצי מקניל";
+
 const DEFAULT_DISCIPLINES = [
   { he: "שירה", sub: "Poetry" },
   { he: "סיפורת קצרה", sub: "Short fiction" },
@@ -87,6 +91,36 @@ function Seal({ size = 40 }) {
   );
 }
 
+function WorkRow({ work, onOpen }) {
+  return (
+    <div className="pw-row">
+      <button className="pw-row-head" onClick={() => onOpen(work.id)}>
+        <span className="pw-row-title pw-font-display">{work.title}</span>
+        <span className="pw-row-meta">
+          {work.category} · {work.year}
+        </span>
+        {work.featured && <span className="pw-featured-pill">נבחרת</span>}
+        <svg
+          viewBox="0 0 24 24"
+          width="20"
+          height="20"
+          className="pw-arrow-icon"
+          aria-hidden="true"
+        >
+          <path
+            d="M18 12H6M6 12L11 7M6 12L11 17"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            fill="none"
+          />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
 export default function WorksPage() {
   const [works, setWorks] = useState([]);
   const [loadingWorks, setLoadingWorks] = useState(true);
@@ -106,6 +140,7 @@ export default function WorksPage() {
             id: d.id,
             title: v.title || "",
             category: v.category || "",
+            author: v.author || "",
             year: v.year || "—",
             excerpt: v.excerpt || "",
             content: v.content || "",
@@ -142,6 +177,14 @@ export default function WorksPage() {
     activeFilter === "all"
       ? works
       : works.filter((w) => w.category === activeFilter);
+
+  // יצירות שאין להן author (יצירות ישנות) נחשבות כמשויכות לאילייה כהן כברירת מחדל
+  const eliyaWorks = filteredWorks.filter(
+    (w) => !w.author || w.author !== SECONDARY_AUTHOR,
+  );
+  const tzitziWorks = filteredWorks.filter(
+    (w) => w.author === SECONDARY_AUTHOR,
+  );
 
   const openWork = works.find((w) => w.id === openId) || null;
   const openWorkParagraphs = openWork
@@ -196,6 +239,11 @@ export default function WorksPage() {
 
         .pw-empty-state{ text-align:center; padding:60px 0; color:var(--muted); font-size:14px; }
 
+        /* ── כותרת קטע מחבר משני (ציצי מקניל) ── */
+        .pw-section-divider{ display:flex; align-items:center; gap:16px; margin:56px 0 28px; }
+        .pw-section-divider::before, .pw-section-divider::after{ content:""; flex:1; height:1px; background:rgba(0,0,0,0.12); }
+        .pw-section-title{ font-size:24px; white-space:nowrap; color:var(--wine); }
+
         /* ── תצוגת יצירה בודדת (מחליפה את הרשימה, ללא ניווט) ── */
         .pw-single-back{ display:block; text-align:right; color:var(--wine); font-size:14px; text-decoration:none; background:none; border:none; cursor:pointer; padding:0; margin-bottom:40px; font-family:'Heebo', sans-serif; }
         .pw-single-back:hover{ text-decoration:underline; }
@@ -203,6 +251,7 @@ export default function WorksPage() {
         .pw-single-meta-row{ display:flex; align-items:center; justify-content:flex-start; gap:12px; margin-bottom:18px; }
         .pw-single-year{ font-size:14px; color:var(--muted); }
         .pw-single-category-pill{ font-size:12px; color:var(--ink-2); border:1px solid rgba(0,0,0,0.15); padding:6px 16px; }
+        .pw-single-author-pill{ font-size:12px; color:var(--wine); border:1px solid rgba(122,46,58,0.3); padding:6px 16px; }
 
         .pw-single-title{ font-size:40px; text-align:right; line-height:1.3; margin:0 0 26px; }
 
@@ -240,10 +289,13 @@ export default function WorksPage() {
           .pw-featured-pill{ font-size:9px; padding:2px 6px; }
           .pw-arrow-icon{ width:16px; height:16px; }
 
+          .pw-section-divider{ margin:36px 0 18px; gap:10px; }
+          .pw-section-title{ font-size:18px; }
+
           .pw-single-back{ font-size:13px; margin-bottom:26px; }
           .pw-single-meta-row{ margin-bottom:14px; }
           .pw-single-year{ font-size:12px; }
-          .pw-single-category-pill{ font-size:11px; padding:5px 12px; }
+          .pw-single-category-pill, .pw-single-author-pill{ font-size:11px; padding:5px 12px; }
           .pw-single-title{ font-size:24px; margin:0 0 18px; }
           .pw-single-divider{ width:90px; margin:0 0 28px; }
           .pw-single-image-wrap{ max-width:100%; max-height:220px; margin:0 0 26px; }
@@ -279,6 +331,11 @@ export default function WorksPage() {
                 {openWork.category}
               </span>
               <span className="pw-single-year">{openWork.year}</span>
+              {openWork.author === SECONDARY_AUTHOR && (
+                <span className="pw-single-author-pill">
+                  {SECONDARY_AUTHOR}
+                </span>
+              )}
             </div>
 
             <h1 className="pw-single-title pw-font-display">
@@ -341,42 +398,36 @@ export default function WorksPage() {
             ) : filteredWorks.length === 0 ? (
               <p className="pw-empty-state">אין יצירות להצגה בקטגוריה זו.</p>
             ) : (
-              <div className="pw-list">
-                {filteredWorks.map((w) => (
-                  <div key={w.id} className="pw-row">
-                    <button
-                      className="pw-row-head"
-                      onClick={() => setOpenId(w.id)}
-                    >
-                      <span className="pw-row-title pw-font-display">
-                        {w.title}
-                      </span>
-                      <span className="pw-row-meta">
-                        {w.category} · {w.year}
-                      </span>
-                      {w.featured && (
-                        <span className="pw-featured-pill">נבחרת</span>
-                      )}
-                      <svg
-                        viewBox="0 0 24 24"
-                        width="20"
-                        height="20"
-                        className="pw-arrow-icon"
-                        aria-hidden="true"
-                      >
-                        <path
-                          d="M18 12H6M6 12L11 7M6 12L11 17"
-                          stroke="currentColor"
-                          strokeWidth="1.8"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          fill="none"
-                        />
-                      </svg>
-                    </button>
+              <>
+                {eliyaWorks.length > 0 && (
+                  <div className="pw-list">
+                    {eliyaWorks.map((w) => (
+                      <WorkRow key={w.id} work={w} onOpen={setOpenId} />
+                    ))}
                   </div>
-                ))}
-              </div>
+                )}
+
+                {tzitziWorks.length > 0 && (
+                  <>
+                    <div className="pw-section-divider">
+                      <h2 className="pw-section-title pw-font-display">
+                        יצירות וסדרות תחת שם העט ציצי מקניל
+                      </h2>
+                    </div>
+                    <div className="pw-list">
+                      {tzitziWorks.map((w) => (
+                        <WorkRow key={w.id} work={w} onOpen={setOpenId} />
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {eliyaWorks.length === 0 && tzitziWorks.length === 0 && (
+                  <p className="pw-empty-state">
+                    אין יצירות להצגה בקטגוריה זו.
+                  </p>
+                )}
+              </>
             )}
           </>
         )}
