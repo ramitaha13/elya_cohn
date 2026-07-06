@@ -30,7 +30,7 @@ const DEFAULT_DISCIPLINES = [
 
 // רשימת המחברים/שמות העט שיצירה יכולה להיות משויכת אליהם
 const AUTHORS = [
-  { id: "eliya", he: "אילייה כהן" },
+  { id: "eliya", he: "איליה כהן" },
   { id: "tzitzi", he: "ציצי מקניל" },
 ];
 
