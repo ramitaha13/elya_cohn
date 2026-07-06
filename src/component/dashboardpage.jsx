@@ -16,7 +16,7 @@ import {
 } from "firebase/firestore";
 
 const BRAND = {
-  name: "אילייה כהן",
+  name: "איליה כהן",
   initials: "א.כ",
 };
 
