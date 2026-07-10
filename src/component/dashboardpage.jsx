@@ -28,10 +28,13 @@ const DEFAULT_DISCIPLINES = [
   { he: "סדנאות כתיבה", sub: "Workshops" },
 ];
 
-// רשימת המחברים/שמות העט שיצירה יכולה להיות משויכת אליהם
-const AUTHORS = [
-  { id: "eliya", he: "איליה כהן" },
-  { id: "tzitzi", he: "ציצי מקניל" },
+// רשימת ברירת המחדל של שמות העט שיצירה יכולה להיות משויכת אליהם.
+// השם הראשון ברשימה הוא שם העט הראשי (למשל "איליה כהן"), וכל שם נוסף
+// יקבל קטע נפרד משלו בדף "יצירות" הציבורי. הרשימה בפועל מנוהלת
+// דרך טאב "פרופיל" > "שמות עט" ונשמרת בתוך מסמך הפרופיל.
+const DEFAULT_AUTHORS = [
+  { he: "איליה כהן" },
+  { he: "ציצי מקניל", heading: "" },
 ];
 
 const DEFAULT_PROFILE = {
@@ -43,6 +46,7 @@ const DEFAULT_PROFILE = {
     "״כל שיר הוא דלת, וכל סיפור הוא חדר שמעבר לה. אני רק מחזיק את המפתח.״",
   aboutTitle: "כתיבה כמרחב בין שיר לסיפור",
   disciplines: DEFAULT_DISCIPLINES,
+  authors: DEFAULT_AUTHORS,
 };
 
 const NAV_ITEMS = [
@@ -262,7 +266,7 @@ function WorksTab({
     }
   }, [disciplines]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // אותו דבר עבור רשימת המחברים
+  // אותו דבר עבור רשימת שמות העט (אם נוסף/הוסר שם עט בפרופיל)
   useEffect(() => {
     if (authors?.length && !authors.some((a) => a.he === draft.author)) {
       setDraft((d) => ({ ...d, author: authors[0].he }));
@@ -464,8 +468,8 @@ function WorksTab({
                 setDraft((d) => ({ ...d, author: e.target.value }))
               }
             >
-              {authors.map((a) => (
-                <option key={a.id} value={a.he}>
+              {authors.map((a, i) => (
+                <option key={i} value={a.he}>
                   {a.he}
                 </option>
               ))}
@@ -588,8 +592,8 @@ function WorksTab({
                         }))
                       }
                     >
-                      {authors.map((a) => (
-                        <option key={a.id} value={a.he}>
+                      {authors.map((a, i) => (
+                        <option key={i} value={a.he}>
                           {a.he}
                         </option>
                       ))}
@@ -874,6 +878,63 @@ function DisciplineEditor({ disciplines, onChange }) {
   );
 }
 
+// עורך שמות העט (מייצרים). לשם הראשון (שם העט הראשי) יש רק שדה שם, כי
+// הוא לא מקבל כותרת קטע בדף הציבורי. לכל שם נוסף יש גם שדה "כותרת הקטע" —
+// טקסט חופשי מלא ששולט בדיוק בכל הכותרת שתופיע מעל היצירות שלו בדף
+// "יצירות" הציבורי (ולא רק בשם שמוצמד לתבנית קבועה). אם שדה הכותרת נשאר
+// ריק, ייעשה שימוש בכותרת ברירת מחדל שמבוססת על השם.
+function AuthorEditor({ authors, onChange }) {
+  const addRow = () => onChange([...authors, { he: "", heading: "" }]);
+  const removeRow = (i) => onChange(authors.filter((_, idx) => idx !== i));
+  const updateRow = (i, field, val) =>
+    onChange(authors.map((a, idx) => (idx === i ? { ...a, [field]: val } : a)));
+
+  return (
+    <div className="discipline-editor">
+      <div className="discipline-list">
+        {authors.map((a, i) => (
+          <div key={i} className="author-row">
+            <div className="discipline-row">
+              <input
+                className="form-input"
+                placeholder={
+                  i === 0 ? "שם העט הראשי (למשל: איליה כהן)" : "שם עט נוסף"
+                }
+                value={a.he}
+                onChange={(e) => updateRow(i, "he", e.target.value)}
+              />
+              <button
+                type="button"
+                className="link-btn link-btn-danger discipline-remove"
+                onClick={() => removeRow(i)}
+                title="הסר"
+              >
+                ✕
+              </button>
+            </div>
+            {i > 0 && (
+              <input
+                className="form-input author-heading-input"
+                placeholder={`כותרת הקטע בדף הציבורי (ברירת מחדל: "יצירות וסדרות תחת שם העט ${a.he || "..."}")`}
+                value={a.heading || ""}
+                onChange={(e) => updateRow(i, "heading", e.target.value)}
+              />
+            )}
+          </div>
+        ))}
+      </div>
+      {authors.length === 0 && (
+        <p className="text-muted text-xs mb-3">
+          אין שמות עט. לחצו "הוסף שם עט".
+        </p>
+      )}
+      <button type="button" className="link-btn mt-2" onClick={addRow}>
+        + הוסף שם עט
+      </button>
+    </div>
+  );
+}
+
 function ProfileTab({ profile, loading, onSave }) {
   const [draft, setDraft] = useState(profile);
   const [saving, setSaving] = useState(false);
@@ -892,6 +953,11 @@ function ProfileTab({ profile, loading, onSave }) {
   const handleDisciplinesChange = (newDisc) => {
     setSaved(false);
     setDraft((p) => ({ ...p, disciplines: newDisc }));
+  };
+
+  const handleAuthorsChange = (newAuthors) => {
+    setSaved(false);
+    setDraft((p) => ({ ...p, authors: newAuthors }));
   };
 
   const handleSave = async (e) => {
@@ -916,6 +982,7 @@ function ProfileTab({ profile, loading, onSave }) {
     { id: "general", label: "כללי" },
     { id: "about", label: "אודות" },
     { id: "disciplines", label: "תחומי יצירה" },
+    { id: "authors", label: "שמות עט" },
   ];
 
   return (
@@ -1035,6 +1102,23 @@ function ProfileTab({ profile, loading, onSave }) {
             <DisciplineEditor
               disciplines={draft.disciplines || DEFAULT_DISCIPLINES}
               onChange={handleDisciplinesChange}
+            />
+          </div>
+        )}
+
+        {/* ── AUTHORS ── */}
+        {activeSection === "authors" && (
+          <div className="profile-section-body">
+            <p className="section-desc">
+              שמות העט שתחתם ניתן לפרסם יצירות. השם הראשון ברשימה הוא שם העט
+              הראשי שלך, ומוצג בדף "יצירות" הציבורי ללא כותרת קטע נפרדת. לכל שם
+              נוסף אפשר לקבוע כותרת קטע משלו בשלמותה (לא רק את השם) — אם משאירים
+              את שדה הכותרת ריק, תוצג כותרת ברירת מחדל. כל שמות העט מוצגים גם
+              לבחירה בתפריט "מייצר" בעת הוספה או עריכה של יצירה בטאב "יצירות".
+            </p>
+            <AuthorEditor
+              authors={draft.authors || DEFAULT_AUTHORS}
+              onChange={handleAuthorsChange}
             />
           </div>
         )}
@@ -1313,12 +1397,14 @@ export default function DashboardPage() {
         .profile-save-bar{ display:flex; align-items:center; gap:14px; margin-top:24px; padding-top:20px; border-top:1px solid rgba(0,0,0,0.08); }
         .saved-pill{ font-size:12px; color:var(--wine); }
 
-        /* Discipline editor */
+        /* Discipline / Author editor */
         .discipline-editor{ margin-bottom:8px; }
         .discipline-list{ display:flex; flex-direction:column; gap:10px; margin-bottom:8px; }
         .discipline-row{ display:flex; gap:10px; align-items:center; }
         .discipline-row .form-input{ flex:1; }
         .discipline-remove{ font-size:14px; flex-shrink:0; padding:4px 8px; }
+        .author-row{ display:flex; flex-direction:column; gap:8px; padding-bottom:10px; margin-bottom:2px; border-bottom:1px solid rgba(0,0,0,0.06); }
+        .author-heading-input{ font-size:12px; }
 
         .btn-fill{ background:var(--gold); color:var(--ink); transition:background-color .3s; cursor:pointer; border:none; font-family:'Heebo', sans-serif; font-weight:500; }
         .btn-fill:hover{ background:var(--gold-soft); }
@@ -1380,7 +1466,11 @@ export default function DashboardPage() {
                 ? profile.disciplines
                 : DEFAULT_DISCIPLINES
             }
-            authors={AUTHORS}
+            authors={
+              profile.authors && profile.authors.length
+                ? profile.authors
+                : DEFAULT_AUTHORS
+            }
           />
         )}
         {tab === "messages" && (

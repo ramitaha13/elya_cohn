@@ -15,16 +15,20 @@ const BRAND = {
   initials: "א.כ",
 };
 
-// שם העט השני. יצירות שאין להן שדה author (או ששוריות ל"אילייה כהן")
-// ייחשבו כמשויכות לאילייה, וכל השאר יוצגו תחת הכותרת של ציצי מקניל.
-const SECONDARY_AUTHOR = "ציצי מקניל";
-
 const DEFAULT_DISCIPLINES = [
   { he: "שירה", sub: "Poetry" },
   { he: "סיפורת קצרה", sub: "Short fiction" },
   { he: "מילים לשירים", sub: "Lyrics" },
   { he: "כתיבת מחזות", sub: "Playwriting" },
   { he: "סדנאות כתיבה", sub: "Workshops" },
+];
+
+// רשימת ברירת מחדל של שמות עט, למקרה שהפרופיל עדיין לא הוגדר.
+// השם הראשון ברשימה הוא שם העט הראשי (מוצג ללא כותרת קטע נפרדת),
+// וכל שם נוסף מקבל בעמוד זה קטע משלו עם כותרת "יצירות וסדרות תחת שם העט...".
+const DEFAULT_AUTHORS = [
+  { he: "אילייה כהן" },
+  { he: "ציצי מקניל", heading: "" },
 ];
 
 // הופך URL-ים בתוך טקסט חופשי לקישורים לחיצים שנפתחים בטאב חדש
@@ -126,6 +130,7 @@ export default function WorksPage() {
   const [loadingWorks, setLoadingWorks] = useState(true);
   const [profileName, setProfileName] = useState(BRAND.name);
   const [disciplines, setDisciplines] = useState(DEFAULT_DISCIPLINES);
+  const [authors, setAuthors] = useState(DEFAULT_AUTHORS);
   const [activeFilter, setActiveFilter] = useState("all");
   const [openId, setOpenId] = useState(null);
 
@@ -166,6 +171,9 @@ export default function WorksPage() {
           if (data.disciplines && data.disciplines.length) {
             setDisciplines(data.disciplines);
           }
+          if (data.authors && data.authors.length) {
+            setAuthors(data.authors);
+          }
         }
       } catch (err) {
         console.error("שגיאה בטעינת פרופיל:", err);
@@ -178,13 +186,36 @@ export default function WorksPage() {
       ? works
       : works.filter((w) => w.category === activeFilter);
 
-  // יצירות שאין להן author (יצירות ישנות) נחשבות כמשויכות לאילייה כהן כברירת מחדל
-  const eliyaWorks = filteredWorks.filter(
-    (w) => !w.author || w.author !== SECONDARY_AUTHOR,
-  );
-  const tzitziWorks = filteredWorks.filter(
-    (w) => w.author === SECONDARY_AUTHOR,
-  );
+  // שם העט הראשי (הראשון ברשימת שמות העט בפרופיל). יצירות שאין להן author
+  // (יצירות ישנות), או שה-author שלהן לא תואם אף שם עט נוסף, ייחשבו
+  // כמשויכות לשם העט הראשי ויוצגו ברשימה העליונה ללא כותרת קטע.
+  const primaryAuthorName = authors[0]?.he || profileName || BRAND.name;
+  const secondaryAuthors = authors.slice(1).filter((a) => a.he);
+
+  // מקבצים את היצירות המסוננות לפי שם העט שלהן
+  const groupedByAuthor = {};
+  filteredWorks.forEach((w) => {
+    const match = secondaryAuthors.find((a) => a.he === w.author);
+    const key = match ? match.he : primaryAuthorName;
+    if (!groupedByAuthor[key]) groupedByAuthor[key] = [];
+    groupedByAuthor[key].push(w);
+  });
+
+  const primaryWorks = groupedByAuthor[primaryAuthorName] || [];
+  const secondaryGroups = secondaryAuthors
+    .map((a) => ({
+      name: a.he,
+      // כותרת הקטע: אם הוגדרה כותרת מותאמת אישית בפרופיל - משתמשים בה
+      // במלואה; אחרת נופלים לברירת מחדל שמבוססת על השם.
+      heading:
+        a.heading && a.heading.trim()
+          ? a.heading
+          : `יצירות וסדרות תחת שם העט ${a.he}`,
+      works: groupedByAuthor[a.he] || [],
+    }))
+    .filter((g) => g.works.length > 0);
+
+  const hasAnyWorks = primaryWorks.length > 0 || secondaryGroups.length > 0;
 
   const openWork = works.find((w) => w.id === openId) || null;
   const openWorkParagraphs = openWork
@@ -239,7 +270,7 @@ export default function WorksPage() {
 
         .pw-empty-state{ text-align:center; padding:60px 0; color:var(--muted); font-size:14px; }
 
-        /* ── כותרת קטע מחבר משני (ציצי מקניל) ── */
+        /* ── כותרת קטע מחבר משני ── */
         .pw-section-divider{ display:flex; align-items:center; gap:16px; margin:56px 0 28px; }
         .pw-section-divider::before, .pw-section-divider::after{ content:""; flex:1; height:1px; background:rgba(0,0,0,0.12); }
         .pw-section-title{ font-size:24px; white-space:nowrap; color:var(--wine); }
@@ -331,10 +362,8 @@ export default function WorksPage() {
                 {openWork.category}
               </span>
               <span className="pw-single-year">{openWork.year}</span>
-              {openWork.author === SECONDARY_AUTHOR && (
-                <span className="pw-single-author-pill">
-                  {SECONDARY_AUTHOR}
-                </span>
+              {openWork.author && openWork.author !== primaryAuthorName && (
+                <span className="pw-single-author-pill">{openWork.author}</span>
               )}
             </div>
 
@@ -395,38 +424,32 @@ export default function WorksPage() {
 
             {loadingWorks ? (
               <p className="pw-empty-state">טוען יצירות...</p>
-            ) : filteredWorks.length === 0 ? (
+            ) : !hasAnyWorks ? (
               <p className="pw-empty-state">אין יצירות להצגה בקטגוריה זו.</p>
             ) : (
               <>
-                {eliyaWorks.length > 0 && (
+                {primaryWorks.length > 0 && (
                   <div className="pw-list">
-                    {eliyaWorks.map((w) => (
+                    {primaryWorks.map((w) => (
                       <WorkRow key={w.id} work={w} onOpen={setOpenId} />
                     ))}
                   </div>
                 )}
 
-                {tzitziWorks.length > 0 && (
-                  <>
+                {secondaryGroups.map((group) => (
+                  <React.Fragment key={group.name}>
                     <div className="pw-section-divider">
                       <h2 className="pw-section-title pw-font-display">
-                        יצירות וסדרות תחת שם העט ציצי מקניל
+                        {group.heading}
                       </h2>
                     </div>
                     <div className="pw-list">
-                      {tzitziWorks.map((w) => (
+                      {group.works.map((w) => (
                         <WorkRow key={w.id} work={w} onOpen={setOpenId} />
                       ))}
                     </div>
-                  </>
-                )}
-
-                {eliyaWorks.length === 0 && tzitziWorks.length === 0 && (
-                  <p className="pw-empty-state">
-                    אין יצירות להצגה בקטגוריה זו.
-                  </p>
-                )}
+                  </React.Fragment>
+                ))}
               </>
             )}
           </>
