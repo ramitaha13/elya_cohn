@@ -99,6 +99,9 @@ function WorkRow({ work, onOpen }) {
   return (
     <div className="pw-row">
       <button className="pw-row-head" onClick={() => onOpen(work.id)}>
+        {work.imageUrl && (
+          <img src={work.imageUrl} alt="" className="pw-row-thumb" />
+        )}
         <span className="pw-row-title pw-font-display">{work.title}</span>
         <span className="pw-row-meta">
           {work.category} · {work.year}
@@ -262,6 +265,7 @@ export default function WorksPage() {
         .pw-row{ border-bottom:1px solid rgba(0,0,0,0.1); }
         .pw-row-head{ display:flex; align-items:center; gap:18px; padding:20px 4px; cursor:pointer; background:none; border:none; width:100%; box-sizing:border-box; text-align:right; font-family:'Heebo', sans-serif; }
         .pw-row-head:hover .pw-row-title{ color:var(--wine); }
+        .pw-row-thumb{ width:52px; height:52px; object-fit:cover; flex-shrink:0; border:1px solid rgba(0,0,0,0.08); }
         .pw-row-title{ font-size:21px; flex-shrink:0; transition:color .2s; }
         .pw-row-meta{ font-size:13px; color:var(--muted); flex:1; }
         .pw-featured-pill{ font-size:10px; letter-spacing:.04em; color:var(--wine); border:1px solid rgba(122,46,58,0.3); padding:2px 8px; flex-shrink:0; }
@@ -315,6 +319,7 @@ export default function WorksPage() {
           .pw-filter-pill{ padding:8px 14px; font-size:12px; }
 
           .pw-row-head{ flex-wrap:wrap; gap:6px 12px; padding:16px 2px; }
+          .pw-row-thumb{ width:40px; height:40px; }
           .pw-row-title{ font-size:17px; width:100%; }
           .pw-row-meta{ font-size:12px; flex:1 1 auto; }
           .pw-featured-pill{ font-size:9px; padding:2px 6px; }

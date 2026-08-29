@@ -329,11 +329,23 @@ function WorksTab({
     e.preventDefault();
     if (!draft.title.trim()) return;
     setSaving(true);
+    let imageUploadFailed = false;
     try {
       let imageUrl = draft.imageUrl || "";
       if (imageFile) {
         setUploadingImage(true);
-        imageUrl = await uploadImageToCloudinary(imageFile);
+        try {
+          imageUrl = await uploadImageToCloudinary(imageFile);
+        } catch (imgErr) {
+          // העלאת התמונה נכשלה - ממשיכים לשמור את היצירה בלי תמונה,
+          // במקום לבטל את כל השמירה.
+          console.error(
+            "העלאת תמונה נכשלה, שומרים את היצירה בלי תמונה:",
+            imgErr,
+          );
+          imageUrl = "";
+          imageUploadFailed = true;
+        }
         setUploadingImage(false);
       }
       await onAdd({
@@ -360,6 +372,11 @@ function WorksTab({
       setImageFile(null);
       setImagePreview(null);
       setAdding(false);
+      if (imageUploadFailed) {
+        alert(
+          "היצירה נשמרה בהצלחה, אך העלאת התמונה נכשלה. ניתן לנסות להוסיף תמונה שוב דרך 'עריכה'.",
+        );
+      }
     } catch {
       alert("הוספת היצירה נכשלה, נסו שוב.");
     } finally {
@@ -399,11 +416,23 @@ function WorksTab({
     e.preventDefault();
     if (!editDraft.title.trim()) return;
     setUpdating(true);
+    let imageUploadFailed = false;
     try {
       let imageUrl = editDraft.imageUrl || "";
       if (editImageFile) {
         setEditUploadingImage(true);
-        imageUrl = await uploadImageToCloudinary(editImageFile);
+        try {
+          imageUrl = await uploadImageToCloudinary(editImageFile);
+        } catch (imgErr) {
+          // העלאת התמונה נכשלה - ממשיכים לשמור את שאר עדכוני היצירה,
+          // ושומרים על התמונה הקודמת (אם הייתה), במקום לבטל את כל העדכון.
+          console.error(
+            "העלאת תמונה נכשלה, שומרים את השינויים בלי התמונה החדשה:",
+            imgErr,
+          );
+          imageUrl = editDraft.imageUrl || "";
+          imageUploadFailed = true;
+        }
         setEditUploadingImage(false);
       }
       await onUpdate(editingId, { ...editDraft, imageUrl });
@@ -414,6 +443,11 @@ function WorksTab({
       setEditDraft(null);
       setEditImageFile(null);
       setEditImagePreview(null);
+      if (imageUploadFailed) {
+        alert(
+          "השינויים נשמרו בהצלחה, אך העלאת התמונה החדשה נכשלה. ניתן לנסות שוב.",
+        );
+      }
     } catch {
       alert("עדכון היצירה נכשל, נסו שוב.");
     } finally {
