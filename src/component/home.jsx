@@ -21,9 +21,9 @@ import {
  * -------------------------------------------------
  *  1. DEFAULT_WRITER הוא תוכן דמו/פולבק — name / tagline / bio / role / excerpt
  *     נטענים בפועל מ-Firestore (דוקומנט "profile/main") ומחליפים אותו
- *     אוטומטית בזמן אמת. גם כותרת סקשן "אודות" (aboutTitle) ורשימת
- *     "תחומי היצירה" (disciplines) נטענות מה-Profile ומוחלפות אוטומטית.
- *     initials נשאר סטטי כאן.
+ *     אוטומטית בזמן אמת. גם כותרת סקשן "אודות" (aboutTitle), רשימת
+ *     "תחומי היצירה" (disciplines) ורשימת הקישורים (links) נטענות מה-Profile
+ *     ומוחלפות אוטומטית. initials נשאר סטטי כאן.
  *  2. את תמונת היוצר/ת — חפשו את ההערה "TODO: תמונה" והחליפו את ה-placeholder ב-<img src="..." />
  *  3. רשימת היצירות נטענת מ-Firestore (קולקשן "works") ומסוננת להציג רק
  *     יצירות שסומנו "נבחרת" (featured: true) בדשבורד. FALLBACK_WORKS מוצג
@@ -33,6 +33,7 @@ import {
  *     בנתיב "/works" (ולא גולל לחלק היצירות באותו עמוד).
  *  6. התאמת מובייל: תפריט המבורגר נפתח בלחיצה במסכים צרים, ושורות
  *     היצירות עוברות לפריסה אנכית (כותרת מעל קטגוריה/שנה) במקום להיחתך.
+ *  7. הקישורים באזור "עקבו" בפוטר מנוהלים מהדשבורד (פרופיל > קישורים).
  */
 
 const DEFAULT_WRITER = {
@@ -58,6 +59,68 @@ const DISCIPLINES = [
   { he: "כתיבת מחזות", sub: "Playwriting" },
   { he: "סדנאות כתיבה", sub: "Workshops" },
 ];
+
+// קישורים באזור "עקבו" — דפולט, מוחלף ע"י profile.links אם קיים
+const DEFAULT_LINKS = [
+  { label: "במה חדשה", url: "http://stage.co.il/Authors/IliaCohen" },
+];
+
+// מוסיף https:// אם חסר, וחוסם פרוטוקולים מסוכנים כמו javascript:
+function normalizeHref(url) {
+  const u = (url || "").trim();
+  if (!u) return null;
+  if (/^(https?:\/\/|mailto:)/i.test(u)) return u;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(u)) return null;
+  return `https://${u}`;
+}
+
+// הופך URL-ים בתוך טקסט חופשי (למשל בביוגרפיה) לקישורים לחיצים שנפתחים בטאב חדש
+function linkifyText(text) {
+  if (!text) return null;
+  const urlRegex = /(https?:\/\/[^\s]+|www\.[^\s]+)/gi;
+  const nodes = [];
+  let lastIndex = 0;
+  let match;
+  let key = 0;
+
+  while ((match = urlRegex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      nodes.push(text.slice(lastIndex, match.index));
+    }
+
+    let url = match[0];
+    // מסירים סימני פיסוק שנדבקו בסוף הקישור בטעות
+    let trailing = "";
+    const trailingMatch = url.match(/[).,;:!?]+$/);
+    if (trailingMatch) {
+      trailing = trailingMatch[0];
+      url = url.slice(0, url.length - trailing.length);
+    }
+
+    const href = url.startsWith("www.") ? `https://${url}` : url;
+    nodes.push(
+      <a
+        key={key++}
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="content-link"
+        dir="ltr"
+      >
+        {url}
+      </a>,
+    );
+    if (trailing) nodes.push(trailing);
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < text.length) {
+    nodes.push(text.slice(lastIndex));
+  }
+
+  return nodes;
+}
 
 // תוכן דמו שמוצג רק כל עוד אין עדיין יצירות שמורות ב-Firestore (כלומר עד שהיוצר מוסיף יצירות בדשבורד)
 const FALLBACK_WORKS = [
@@ -314,6 +377,18 @@ export default function WriterLandingPage() {
     profile?.disciplines && profile.disciplines.length > 0
       ? profile.disciplines
       : DISCIPLINES;
+
+  // קישורי "עקבו" — מגיעים מה-Profile (links). אם השדה לא קיים בכלל נשתמש
+  // בדפולט; אם הוא קיים אבל ריק (נמחקו כל הקישורים) האזור לא יוצג.
+  const rawLinks = Array.isArray(profile?.links)
+    ? profile.links
+    : DEFAULT_LINKS;
+  const socialLinks = rawLinks
+    .map((l) => ({
+      label: (l.label || "").trim(),
+      href: normalizeHref(l.url),
+    }))
+    .filter((l) => l.label && l.href);
 
   // טוען את היצירות בזמן אמת מ-Firestore ומסנן להציג רק יצירות שסומנו
   // "נבחרת" (featured: true) בדשבורד. הסינון נעשה בצד הלקוח כדי לא לדרוש
@@ -574,6 +649,15 @@ export default function WriterLandingPage() {
         }
         .work-excerpt.is-open{ max-height:200px; }
 
+        /* קישורים בתוך טקסט חופשי (ביוגרפיה) */
+        .content-link{
+          color:var(--wine);
+          text-decoration:underline;
+          word-break:break-all;
+          transition:color .2s ease;
+        }
+        .content-link:hover{ color:var(--gold); }
+
         /* Pull quote mark */
         .quote-mark{
           font-family:'Frank Ruhl Libre', serif;
@@ -780,7 +864,7 @@ export default function WriterLandingPage() {
                   key={i}
                   className="text-muted-2 leading-loose text-[16px] sm:text-[17px] mb-5"
                 >
-                  {p}
+                  {linkifyText(p)}
                 </p>
               ))}
               <div className="flex items-start gap-4 mt-10 bg-parchment-2 p-5 sm:p-6 border-r-2 border-wine">
@@ -914,20 +998,24 @@ export default function WriterLandingPage() {
               <p className="text-muted text-sm leading-relaxed mb-10 max-w-sm">
                 {writer.role}. כתבו כמה שורות — אשתדל לחזור בהקדם.
               </p>
-              <p className="text-xs tracking-widest text-gold mb-4">עקבו</p>
-              <div className="flex gap-4">
-                {["במה חדשה"].map((s) => (
-                  <a
-                    key={s}
-                    href="http://stage.co.il/Authors/IliaCohen"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-muted text-sm hover:text-gold-soft transition-colors"
-                  >
-                    {s}
-                  </a>
-                ))}
-              </div>
+              {socialLinks.length > 0 && (
+                <>
+                  <p className="text-xs tracking-widest text-gold mb-4">עקבו</p>
+                  <div className="flex flex-wrap gap-4 justify-center md:justify-start">
+                    {socialLinks.map((l, i) => (
+                      <a
+                        key={i}
+                        href={l.href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-muted text-sm hover:text-gold-soft transition-colors"
+                      >
+                        {l.label}
+                      </a>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Right: contact form */}
